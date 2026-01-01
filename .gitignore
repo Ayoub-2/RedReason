@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-reports/
 *.log
 hashes_*.txt
 gpp_passwords.txt
