@@ -7,3 +7,4 @@ gpp_passwords.txt
 .DS_Store
 docs/task.md
 docs/implementation_plan.md
+extract_pdf.py
