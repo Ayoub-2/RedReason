@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+reports/
+*.log
+hashes_*.txt
+gpp_passwords.txt
+.DS_Store
+docs/task.md
+docs/implementation_plan.md
