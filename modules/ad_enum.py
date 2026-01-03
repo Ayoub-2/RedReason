@@ -11,6 +11,9 @@ class ADEnumerator:
         self.password = password
         self.hashes = hashes
         self.conn = None
+        self.collected_users = []
+        self.collected_computers = []
+        self.collected_dcs = []
 
     def connect(self):
         log.info(f"Connecting to LDAP server: {self.target}")
@@ -135,6 +138,50 @@ class ADEnumerator:
         self.conn.search(default_nc, "(objectClass=groupPolicyContainer)", attributes=['displayName', 'gPCFileSysPath'])
         for entry in self.conn.entries:
             log.info(f"GPO: {entry.displayName} ({entry.gPCFileSysPath})")
+
+    def get_users_detailed(self):
+        log.info("Enumerating Users (Detailed)...")
+        default_nc, _ = self.get_naming_contexts()
+        # Users with descriptions often contain passwords
+        self.conn.search(default_nc, "(&(objectClass=user)(objectCategory=person))", attributes=['sAMAccountName', 'description', 'pwdLastSet', 'badPwdCount', 'userAccountControl', 'adminCount', 'objectSid', 'distinguishedName'])
+        
+        for entry in self.conn.entries:
+            name = str(entry.sAMAccountName)
+            desc = entry.description
+            
+            # Store for BloodHound
+            self.collected_users.append({
+                "name": name,
+                "dn": str(entry.distinguishedName),
+                "description": str(desc) if desc else "",
+                "adminCount": int(entry.adminCount.value) if entry.adminCount else 0,
+                "pwdLastSet": int(entry.pwdLastSet.value.timestamp()) if entry.pwdLastSet else 0,
+                "sid": str(entry.objectSid) if 'objectSid' in entry else ""
+            })
+
+            if desc:
+                log.evidence(f"User '{name}' has a description: '{desc}'")
+                log.hypothesis("Check description for passwords or sensitive information.")
+            
+            # Check for 'Don't Require Preauthentication' (AS-REP Roasting)
+            # UAC_FLAG_DONT_REQUIRE_PREAUTH = 0x00040000
+            if entry.userAccountControl and (int(entry.userAccountControl.value) & 0x00040000):
+                log.success(f"VULNERABLE: User '{name}' does NOT require Kerberos preauthentication (AS-REP Roasting possible).")
+
+    def get_domain_controllers(self):
+        log.info("Enumerating Domain Controllers...")
+        default_nc, _ = self.get_naming_contexts()
+        # Domain controllers are servers with the 'userAccountControl' bit for 'SERVER_TRUST_ACCOUNT' (0x2000) set
+        # and also have the 'primaryGroupID' of 'Domain Controllers' (516)
+        self.conn.search(default_nc, "(&(objectClass=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))", attributes=['dNSHostName', 'distinguishedName'])
+        
+        for entry in self.conn.entries:
+            hostname = str(entry.dNSHostName)
+            log.evidence(f"Domain Controller Found: {hostname}")
+            self.collected_dcs.append({
+                "name": hostname.split('.')[0],
+                "dn": str(entry.distinguishedName)
+            })
 
     def check_dcsync_rights(self):
         log.info("Checking for Suspect DCSync Rights...")
@@ -271,8 +318,71 @@ class ADEnumerator:
         else:
             log.info("Password Spraying risk is moderate/low.")
 
+    def check_adcs_templates(self):
+        log.info("Checking AD CS Certificate Templates (ESC1)...")
+        # Search for templates
+        # Configuration Naming Context is needed for templates: CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=...
+        _, config_nc = self.get_naming_contexts()
+        pkis_dn = f"CN=Public Key Services,CN=Services,{config_nc}"
+        
+        self.conn.search(pkis_dn, "(objectClass=pKICertificateTemplate)", attributes=['name', 'msPKI-Certificate-Name-Flag', 'msPKI-Enrollment-Flag', 'pKIExtendedKeyUsage'])
+        
+        for entry in self.conn.entries:
+            name = str(entry.name)
+            name_flag = int(entry['msPKI-Certificate-Name-Flag'].value or 0)
+            enroll_flag = int(entry['msPKI-Enrollment-Flag'].value or 0)
+            ekus = entry['pKIExtendedKeyUsage'].value or []
+            
+            # ESC1 Conditions:
+            # 1. Enrollee Supplies Subject (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT = 0x00000001)
+            # 2. Client Authentication EKU (1.3.6.1.5.5.7.3.2) or Smart Card Logon (1.3.6.1.4.1.311.20.2.2) or Any Purpose (2.5.29.37.0)
+            # 3. Manager Approval NOT required (CT_FLAG_PEND_ALL_REQUESTS = 0x00000002) - If set, it's safer.
+            
+            is_enrollee_supplies_subject = (name_flag & 0x00000001) > 0
+            requires_approval = (enroll_flag & 0x00000002) > 0
+            
+            has_auth_eku = False
+            for eku in ekus:
+                if eku in ['1.3.6.1.5.5.7.3.2', '1.3.6.1.4.1.311.20.2.2', '2.5.29.37.0']:
+                    has_auth_eku = True
+                    break
+            
+            if is_enrollee_supplies_subject and has_auth_eku and not requires_approval:
+                log.success(f"VULNERABLE (ESC1): Template '{name}' allows 'Enrollee Supplies Subject' + Client Auth!")
+                log.hypothesis(f"  -> An attacker can request a cert as ANY user (e.g. Administrator) using this template.")
+
+    def check_adcs_web_enrollment(self):
+        log.info("Checking for AD CS Web Enrollment (ESC8)...")
+        # Check pKIEnrollmentService in Configuration partition
+        _, config_nc = self.get_naming_contexts()
+        pkis_dn = f"CN=Enrollment Services,CN=Public Key Services,CN=Services,{config_nc}"
+        
+        self.conn.search(pkis_dn, "(objectClass=pKIEnrollmentService)", attributes=['dNSHostName', 'name'])
+        
+        for entry in self.conn.entries:
+            host = str(entry.dNSHostName)
+            ca_name = str(entry.name)
+            # We can't confirm HTTP endpoint existence purely via LDAP, but existence of an Enrollment Service often implies it.
+            # Real validation would verify http://<host>/certsrv
+            log.evidence(f"CA Found: {ca_name} on {host}")
+            log.hypothesis(f"  -> Check http://{host}/certsrv for ESC8 (NTLM Relay to AD CS).")
+
+
+            log.hypothesis(f"  -> Check http://{host}/certsrv for ESC8 (NTLM Relay to AD CS).")
+
+    def get_computers_basic(self):
+        # We need this for BloodHound even if not logging explicitly
+        default_nc, _ = self.get_naming_contexts()
+        self.conn.search(default_nc, "(objectClass=computer)", attributes=['dNSHostName', 'distinguishedName'])
+        for entry in self.conn.entries:
+             self.collected_computers.append({
+                 "name": str(entry.dNSHostName).split('.')[0],
+                 "dn": str(entry.distinguishedName)
+             })
+
     def run_all(self):
         if self.connect():
+            self.get_computers_basic() # Populate list
             self.check_machine_account_quota()
             self.check_password_policy()
             self.get_domain_trusts()
@@ -281,6 +391,8 @@ class ADEnumerator:
             self.get_domain_controllers()
             self.check_laps()
             self.check_adcs()
+            self.check_adcs_templates()
+            self.check_adcs_web_enrollment()
             self.get_gpos()
             self.check_dcsync_rights()
             self.check_service_account_risks()

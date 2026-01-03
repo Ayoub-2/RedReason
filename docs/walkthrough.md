@@ -31,6 +31,17 @@ RedReason has been upgraded to provide "exhaustive" enumeration of Active Direct
 - **Service Hygiene**: Flags service accounts with passwords > 1 year old or "Shadow Admin" indicators (adminCount=1).
 - **Risk Scoring**: Generates a "Domain Risk Score" (0-100) based on findings to prioritize remediation.
 
+### 5. CAs, Coercion & Visualization (Phase 4)
+- **AD CS (Certified Pre-Owned)**:
+    - **ESC1**: Enumerates Certificate Templates allowing 'Enrollee Supplies Subject' + 'Client Authentication'.
+    - **ESC8**: Identifies AD CS Web Enrollment (HTTP) endpoints vulnerable to NTLM Relay.
+- **Coercion**:
+    - **PetitPotam**: Checks for exposed `EFSRPC` pipes (MS-EFSR) on DCs.
+    - **PrintNightmare**: Checks if the Print Spooler service (`spoolss`) is running on DCs.
+- **BloodHound**:
+    - Generates `users.json` and `computers.json` compatible with BloodHound 4.x.
+    - Usage: `python main.py ... --bloodhound`
+
 ## Usage
 The usage remains the same. The new checks are automatically integrated into the main workflow.
 

@@ -16,6 +16,8 @@ import base64
 from Crypto.Cipher import AES
 from impacket.ldap import ldaptypes
 import struct
+from impacket.dcerpc.v5 import transport, epm, rprn
+from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_NONE
 
 # GPP Key
 GPP_KEY = unhexlify('4e9906e8fcb66cc9faf49310620fe8682ed387d130f429438e9e2448007d136e')
@@ -289,6 +291,67 @@ class ADAttacker:
                 except Exception as e:
                     log.debug(f"Failed to parse RBCD SD for {name}: {e}")
 
+    def check_coercion_vulnerabilities(self):
+        log.info("Checking for Coercion Vulnerabilities (PetitPotam, PrintNightmare)...")
+        # We need a list of DCs from enumeration, but we are inside attacks.
+        # We'll use the current target if it's a DC, or query for DCs.
+        # For this tool, we assume self.target might be a DC or we scan the one we connected to.
+        
+        targets = [self.target]
+        # Try to confirm functionality on the target we are connected to
+        
+        for target in targets:
+            log.info(f"Scanning {target} for pipes...")
+            
+            # 1. Print Spooler (RPRN)
+            try:
+                # Bind to Spooler Pipe
+                stringbinding = f'ncacn_np:{target}[\\pipe\\spoolss]'
+                rpctransport = transport.DCERPCTransportFactory(stringbinding)
+                rpctransport.set_credentials(self.user, self.password, self.domain, self.hashes[33:] if self.hashes else '', self.hashes[:32] if self.hashes else '')
+                rpctransport.set_connect_timeout(5)
+                dce = rpctransport.get_dce_rpc()
+                dce.connect()
+                dce.bind(rprn.MSRPC_UUID_RPRN)
+                log.evidence(f"Print Spooler Service ENABLED on {target} (Coercion Vector: PrinterBug).")
+                dce.disconnect()
+            except Exception as e:
+                log.debug(f"Spooler check failed on {target}: {e}")
+
+            # 2. PetitPotam (EFSRPC)
+            # Checking if the pipe exists is usually enough to guess it's vulnerable if not patched.
+            # However, EFSRPC is more complex to bind to anonymously or check simply without triggering attack.
+            # We will rely on EPM (Endpoint Mapper) to see if the interface is registered.
+            try:
+                stringbinding = f'ncacn_ip_tcp:{target}[135]'
+                rpctransport = transport.DCERPCTransportFactory(stringbinding)
+                rpctransport.set_connect_timeout(5)
+                dce = rpctransport.get_dce_rpc()
+                dce.connect()
+                # EFSRPC UUID: c681d488-d850-11d0-8c52-00c04fc295ee
+                try:
+                    epm.hept_map(target, epm.MSRPC_UUID_PORTMAP, protocol='ncacn_ip_tcp')
+                    # If we can talk to EPM, we assume potential surface. Deep check requires binding to specific UUID.
+                    # Simplified for stability: Just note that we can talk to RPC.
+                    pass
+                except:
+                    pass
+                
+                # A more direct check is trying to bind to the pipename directly via SMB named pipe
+                # \pipe\efsrpc or \pipe\lsarpc
+                stringbinding_efs = f'ncacn_np:{target}[\\pipe\\efsrpc]'
+                rpctransport_efs = transport.DCERPCTransportFactory(stringbinding_efs)
+                rpctransport_efs.set_credentials(self.user, self.password, self.domain, self.hashes[33:] if self.hashes else '', self.hashes[:32] if self.hashes else '')
+                dce_efs = rpctransport_efs.get_dce_rpc()
+                dce_efs.connect()
+                # If we connected to the pipe, it's exposed.
+                dce_efs.bind(('c681d488-d850-11d0-8c52-00c04fc295ee', '1.0'))
+                log.evidence(f"EFSRPC Pipe Exposed on {target} (Coercion Vector: PetitPotam).")
+                dce_efs.disconnect()
+
+            except Exception as e:
+                 log.debug(f"PetitPotam check failed on {target}: {e}")
+
     def run_all(self):
         if self.connect():
             self.check_asrep_roasting()
@@ -297,6 +360,7 @@ class ADAttacker:
             self.check_rbcd()
             self.check_smb_signing()
             self.check_gpp_passwords()
+            self.check_coercion_vulnerabilities()
 
 def run(args):
     attacker = ADAttacker(args.target, args.domain, args.user, args.password, args.hashes)
