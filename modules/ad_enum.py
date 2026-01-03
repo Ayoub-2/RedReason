@@ -1,4 +1,7 @@
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE, LEVEL
+from impacket.krb5.kerberosv5 import getKerberosTGT
+from impacket.krb5 import constants
+from impacket.krb5.types import Principal
 from impacket.ldap import ldaptypes
 import datetime
 from core.logger import log
@@ -16,6 +19,11 @@ class ADEnumerator:
         self.collected_dcs = []
 
     def connect(self):
+        # Check if we have credentials
+        if not self.password and not self.hashes:
+            log.info("No credentials provided. Switching to Blind Kerberos Enumeration mode.")
+            return False # Return False to skip standard LDAP connection, but we will handle this in run_all
+
         log.info(f"Connecting to LDAP server: {self.target}")
         try:
             server = Server(self.target, get_info=ALL)
@@ -197,15 +205,28 @@ class ADEnumerator:
                     for ace in sd['Dacl'].aces:
                         # DS-Replication-Get-Changes (1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)
                         # DS-Replication-Get-Changes-All (1131f6ad-9c07-11d1-f79f-00c04fc2dcd2)
-                        # We look for GUIDs in the ACE ObjectType (if present)
+                        DCSYNC_RIGHTS = [
+                            '1131f6aa-9c07-11d1-f79f-00c04fc2dcd2',
+                            '1131f6ad-9c07-11d1-f79f-00c04fc2dcd2'
+                        ]
                         
-                        # Simplified check for specific rights masks or object types isn't trivial purely with string matching 
-                        # on raw ace. We look for ACCESS_ALLOWED_OBJECT_ACES which grant these Extended Rights.
-                        
-                        # For this implementation, we will log that we inspected it, 
-                        # but real parsing requires mapping GUIDs to names.
-                        # We will skip deep parsing to avoid bloat, but noting the logic:
-                        pass
+                        try:
+                            ace_type = ace['AceType']
+                            # ACCESS_ALLOWED_OBJECT_ACE = 0x05
+                            if ace_type == 0x05:
+                                # Check if ObjectType is present (ACE_OBJECT_TYPE_PRESENT = 0x01)
+                                if ace['Ace']['Flags'] & 0x01:
+                                    # ObjectType is bytes, convert to string UUID
+                                    import uuid
+                                    obj_type_bytes = ace['Ace']['ObjectType']
+                                    obj_uuid = str(uuid.UUID(bytes_le=obj_type_bytes))
+                                    
+                                    if obj_uuid in DCSYNC_RIGHTS:
+                                        sid = ace['Ace']['Sid'].formatCanonical()
+                                        log.evidence(f"DCSync Right Found! SID: {sid} has right {obj_uuid}")
+                                        log.hypothesis(f"  -> Principal {sid} can replicate secrets (DCSync).")
+                        except Exception as ex:
+                            pass
                         
                     log.info("DCSync Rights Check: Parsed SD (Deep analysis skipped in this snippet to avoid complexity).")
                 except Exception as e:
@@ -380,27 +401,58 @@ class ADEnumerator:
                  "dn": str(entry.distinguishedName)
              })
 
+    def verify_user_kerberos(self):
+        log.info(f"Attempting to verify user '{self.user}' via Kerberos (Port 88)...")
+        if not self.user:
+            log.fail("Cannot perform blind enumeration without a username (--user).")
+            return
+
+        try:
+            clientName = Principal(self.user, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+            # Request TGT with NO Pre-Auth (checking if user exists or is roastable)
+            tgt, cipher, oldSessionKey, sessionKey = getKerberosTGT(clientName, '', self.domain, None, None, no_preauth=True)
+            
+            # If we get here, we got a TGT! 
+            log.success(f"User '{self.user}' EXISTS and is VULNERABLE to AS-REP Roasting! (TGT received without password)")
+            self.collected_users.append({"name": self.user, "status": "AS-REP Roastable"})
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "KDC_ERR_PREAUTH_REQUIRED" in error_msg or "SessionError: KDC_ERR_PREAUTH_REQUIRED" in error_msg:
+                log.success(f"User '{self.user}' EXISTS! (Pre-Auth Required)")
+                self.collected_users.append({"name": self.user, "status": "Active"})
+            elif "KDC_ERR_C_PRINCIPAL_UNKNOWN" in error_msg:
+                log.fail(f"User '{self.user}' DOES NOT EXIST.")
+            else:
+                log.info(f"User '{self.user}' Verification Result: {error_msg}")
+
+
     def run_all(self):
-        if self.connect():
-            self.get_computers_basic() # Populate list
-            self.check_machine_account_quota()
-            self.check_password_policy()
-            self.get_domain_trusts()
-            self.get_group_members()
-            self.get_users_detailed()
-            self.get_domain_controllers()
-            self.check_laps()
-            self.check_adcs()
-            self.check_adcs_templates()
-            self.check_adcs_web_enrollment()
-            self.get_gpos()
-            self.check_dcsync_rights()
-            self.check_service_account_risks()
-            self.check_kerberos_encryption_types()
-            self.check_adminsdholder()
-            self.assess_remote_exposure()
-            self.assess_spray_feasibility()
-            log.info("Enumeration complete")
+        # If credentials exist, try LDAP
+        if self.password or self.hashes:
+            if self.connect():
+                self.get_computers_basic() # Populate list
+                self.check_machine_account_quota()
+                self.check_password_policy()
+                self.get_domain_trusts()
+                self.get_group_members()
+                self.get_users_detailed()
+                self.get_domain_controllers()
+                self.check_laps()
+                self.check_adcs()
+                self.check_adcs_templates()
+                self.check_adcs_web_enrollment()
+                self.get_gpos()
+                self.check_dcsync_rights()
+                self.check_service_account_risks()
+                self.check_kerberos_encryption_types()
+                self.check_adminsdholder()
+                self.assess_remote_exposure()
+                self.assess_spray_feasibility()
+                log.info("Enumeration complete")
+        else:
+            # Fallback to blind enumeration
+            self.verify_user_kerberos()
 
 def run(args):
     # Wrapper for main.py

