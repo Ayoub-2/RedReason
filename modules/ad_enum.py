@@ -7,6 +7,7 @@ import datetime
 from core.logger import log
 from core.types import ADUser, ADComputer
 from core.module import RedReasonModule
+from core.session import SessionManager
 
 class ADEnumerator(RedReasonModule):
     def __init__(self, target, domain, user, password, hashes=None):
@@ -22,6 +23,7 @@ class ADEnumerator(RedReasonModule):
         self.collected_users = []
         self.collected_computers = []
         self.collected_dcs = []
+        self.collected_dns = []
 
     def connect(self):
         # Check if we have credentials
@@ -199,7 +201,37 @@ class ADEnumerator(RedReasonModule):
             log.evidence(f"Domain Controller Found: {hostname}")
             self.collected_dcs.append(ADComputer(name=hostname.split('.')[0], dn=str(entry.distinguishedName), is_dc=True))
 
-    def check_dcsync_rights(self):
+    def get_dns_records(self):
+        log.info("Enumerating AD-Integrated DNS Records...")
+        # Search ForestDnsZones and DomainDnsZones
+        # Default NC usually is DC=domain,DC=com
+        # DNS zones: DC=DomainDnsZones,<root_dn> and DC=ForestDnsZones,<root_dn>
+        
+        default_nc, root_dn = self.get_naming_contexts()
+        zones = [
+            f"DC=DomainDnsZones,{root_dn}",
+            f"DC=ForestDnsZones,{root_dn}"
+        ]
+        
+        found = 0
+        for zone in zones:
+            try:
+                # dnsNode objects
+                log.debug(f"Searching DNS Zone: {zone}")
+                self.conn.search(zone, "(objectClass=dnsNode)", attributes=['name', 'dnsRecord'])
+                
+                for entry in self.conn.entries:
+                    # 'dnsRecord' is binary, simplified parsing here or just listing names
+                    # For comprehensive parsing requires struct unpacking.
+                    # We will log names for discovery.
+                    record_name = str(entry.name)
+                    log.evidence(f"DNS Record Found: {record_name} in {zone}")
+                    found += 1
+            except Exception as e:
+                log.debug(f"Failed to search zone {zone}: {e}")
+                
+        if found:
+            log.success(f"Found {found} DNS records.")
         log.info("Checking for Suspect DCSync Rights...")
         default_nc, _ = self.get_naming_contexts()
         # Read the nTSecurityDescriptor of the Domain Root
@@ -470,6 +502,10 @@ class ADEnumerator(RedReasonModule):
                 self.assess_remote_exposure()
                 self.assess_spray_feasibility()
                 log.info("Enumeration complete")
+                
+                # Save Session
+                sm = SessionManager(self.target)
+                sm.save_state(self.collected_users, self.collected_computers)
         else:
             # Fallback to blind enumeration
             self.verify_user_kerberos()

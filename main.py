@@ -4,7 +4,7 @@ from core.logger import log, ReasoningLogger
 from core.report import ReportGenerator
 from core.bloodhound import BloodHoundGenerator
 
-from modules import ad_enum, ad_attacks
+from modules import ad_enum, ad_attacks, ad_post
 
 def main():
     parser = argparse.ArgumentParser(description="RedReason - Autonomous Red Team Operation Tool")
@@ -13,9 +13,10 @@ def main():
     parser.add_argument("--password", help="Password for authentication")
     parser.add_argument("--hashes", help="NTLM hashes (LM:NT)")
     parser.add_argument("--domain", help="Domain Name (if different from target)")
-    parser.add_argument("--module", choices=["enum", "attack", "all"], default="all", help="Operation module to run")
+    parser.add_argument("--module", choices=["enum", "attack", "post", "all"], default="all", help="Operation module to run")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument('--bloodhound', action='store_true', help='Generate BloodHound compatible output files')
+    parser.add_argument('--stealth', action='store_true', help='Enable Stealth Mode (Passive Checks Only)')
 
     args = parser.parse_args()
 
@@ -31,6 +32,12 @@ def main():
 
     try:
         # Orchestration Logic
+        # Orchestration Logic
+        # Try to load session first to populate context if we skipped enum
+        from core.session import SessionManager
+        sm = SessionManager(args.target)
+        cached_users, cached_computers = sm.load_state()
+
         if args.module in ["enum", "all"]:
             log.info("Running Enumeration Module...")
             enumerator = ad_enum.ADEnumerator(
@@ -66,6 +73,13 @@ def main():
         if args.module in ["attack", "all"]:
             log.info("Running Attack Module...")
             # state sharing
+            # If we didn't run enumeration just now, but we loaded a session, create a dummy enumerator to hold state
+            if 'enumerator' not in locals():
+                 # Create a shell enumerator just to hold the data
+                 enumerator = ad_enum.ADEnumerator(args.target, target_domain, args.user, args.password, args.hashes)
+                 if cached_users: enumerator.collected_users = cached_users
+                 if cached_computers: enumerator.collected_computers = cached_computers
+
             current_state = enumerator if 'enumerator' in locals() else None
             
             attacker = ad_attacks.ADAttacker(
@@ -77,6 +91,22 @@ def main():
                 enumeration_data=current_state
             )
             attacker.run(args)
+
+
+        if args.module in ["post", "all"]:
+            log.info("Running Post-Exploitation Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            post_ex = ad_post.ADPostExploitation(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            post_ex.run(args)
 
 
     except KeyboardInterrupt:

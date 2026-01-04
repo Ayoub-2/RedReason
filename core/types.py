@@ -17,6 +17,10 @@ class RedReasonObject:
             "properties": self.properties
         }
 
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
+
 @dataclass
 class ADUser(RedReasonObject):
     description: Optional[str] = None
@@ -27,13 +31,35 @@ class ADUser(RedReasonObject):
     uac_flags: int = 0
     spn: Optional[str] = None
 
+    @classmethod
+    def from_dict(cls, data):
+        # Handle specific field overrides if necessary, or just rely on inherited + kwargs
+        # Dataclass reconstruction from dict is straightforward if keys match
+        cleaned = {k: v for k, v in data.items() if k in cls.__annotations__}
+        return cls(**cleaned)
+
 @dataclass
 class ADComputer(RedReasonObject):
     os: Optional[str] = None
     is_dc: bool = False
     has_laps: bool = False
     unconstrained_delegation: bool = False
+
+    @classmethod
+    def from_dict(cls, data):
+        cleaned = {k: v for k, v in data.items() if k in cls.__annotations__}
+        return cls(**cleaned)
     
 @dataclass
 class ADGroup(RedReasonObject):
     members: List[str] = field(default_factory=list)
+
+@dataclass
+class ADDnsNode(RedReasonObject):
+    record_type: Optional[str] = None
+    data: Optional[str] = None
+    
+    @classmethod
+    def from_dict(cls, data):
+        cleaned = {k: v for k, v in data.items() if k in cls.__annotations__}
+        return cls(**cleaned)
