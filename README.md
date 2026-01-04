@@ -7,8 +7,17 @@ An autonomous Red Team operator tool designed for the CRTP mindset.
 - **Reasoning**: Logs *why* an attack is attempted (Hypothesis driven).
 - **Lab Ready**: Built for Active Directory labs (like alteredsecurity.com).
 
-## Modules
-1. **Enumeration**: Maps the domain (DCs, Users, Computers).
+## Architecture & Extensibility
+RedReason is built on a modular architecture designed for "Senior Red Team" operations:
+*   **Strict Data Model**: Uses typed objects (`ADUser`, `ADComputer`) for consistency.
+*   **State Sharing**: Modules share intelligence to reduce network noise (e.g., Attack module uses Enumeration cache).
+*   **Plugin System**: Easily extensible via the `RedReasonModule` interface.
+
+See [Developer Guide](docs/developer_guide.md) for instructions on creating new modules.
+
+## Features
+- **Enumeration**: 
+    - Users (UAC, Password Age, Description Analysis)
 2. **Attacks**:
     - Kerberoasting (Saves hashes to `reports/hashes_kerb.txt`)
     - AS-REP Roasting (Saves hashes to `reports/hashes_asrep.txt`)

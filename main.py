@@ -65,7 +65,18 @@ def main():
         
         if args.module in ["attack", "all"]:
             log.info("Running Attack Module...")
-            ad_attacks.run(args)
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            attacker = ad_attacks.ADAttacker(
+                target=args.target, 
+                domain=target_domain, 
+                user=args.user, 
+                password=args.password, 
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            attacker.run(args)
 
 
     except KeyboardInterrupt:

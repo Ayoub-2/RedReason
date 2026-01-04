@@ -6,9 +6,13 @@ from impacket.ldap import ldaptypes
 import datetime
 from core.logger import log
 from core.types import ADUser, ADComputer
+from core.module import RedReasonModule
 
-class ADEnumerator:
+class ADEnumerator(RedReasonModule):
     def __init__(self, target, domain, user, password, hashes=None):
+        super().__init__()
+        self.name = "ADEnumerator"
+        self.description = "Active Directory Enumeration Module"
         self.target = target
         self.domain = domain
         self.user = user
@@ -431,6 +435,17 @@ class ADEnumerator:
             else:
                 log.info(f"User '{self.user}' Verification Result: {error_msg}")
 
+
+
+
+
+    def run(self, args=None):
+        """
+        Standard entry point for RedReasonModule compliance.
+        """
+        self.log_start()
+        self.run_all()
+        self.log_end()
 
     def run_all(self):
         # If credentials exist, try LDAP

