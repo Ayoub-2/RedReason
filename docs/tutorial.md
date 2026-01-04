@@ -62,7 +62,7 @@ def verify_user_kerberos(self):
 **Code Snippet**:
 ```python
 def get_group_members(self):
-    groups = ["Domain Admins", "Enterprise Admins", "Backup Operators", "Remote Desktop Users"]
+    groups = ["Domain Admins", "Enterprise Admins", "Schema Admins", "Backup Operators", "Server Operators", "Account Operators"]
     for group in groups:
         # Search for group by CN and list 'member' attribute
         self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])

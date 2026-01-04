@@ -5,6 +5,7 @@ from impacket.krb5.types import Principal
 from impacket.ldap import ldaptypes
 import datetime
 from core.logger import log
+from core.types import ADUser, ADComputer
 
 class ADEnumerator:
     def __init__(self, target, domain, user, password, hashes=None):
@@ -89,7 +90,7 @@ class ADEnumerator:
     def get_group_members(self):
         log.info("Enumerating High-Value Group Members...")
         default_nc, _ = self.get_naming_contexts()
-        target_groups = ["Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Remote Desktop Users", "Account Operators", "Backup Operators"]
+        target_groups = ["Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Remote Desktop Users", "Account Operators", "Backup Operators", "Server Operators", "Print Operators", "Group Policy Creator Owners"]
         
         for group in target_groups:
             self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])
@@ -156,16 +157,21 @@ class ADEnumerator:
         for entry in self.conn.entries:
             name = str(entry.sAMAccountName)
             desc = entry.description
+            pwd_ts = int(entry.pwdLastSet.value.timestamp()) if entry.pwdLastSet else 0
+            uac = int(entry.userAccountControl.value) if entry.userAccountControl else 0
             
+            user_obj = ADUser(
+                name=name,
+                dn=str(entry.distinguishedName),
+                sid=str(entry.objectSid) if 'objectSid' in entry else "",
+                description=str(desc) if desc else "",
+                admin_count=bool(entry.adminCount.value) if entry.adminCount else False,
+                password_last_set=pwd_ts,
+                uac_flags=uac
+            )
+
             # Store for BloodHound
-            self.collected_users.append({
-                "name": name,
-                "dn": str(entry.distinguishedName),
-                "description": str(desc) if desc else "",
-                "adminCount": int(entry.adminCount.value) if entry.adminCount else 0,
-                "pwdLastSet": int(entry.pwdLastSet.value.timestamp()) if entry.pwdLastSet else 0,
-                "sid": str(entry.objectSid) if 'objectSid' in entry else ""
-            })
+            self.collected_users.append(user_obj)
 
             if desc:
                 log.evidence(f"User '{name}' has a description: '{desc}'")
@@ -173,7 +179,8 @@ class ADEnumerator:
             
             # Check for 'Don't Require Preauthentication' (AS-REP Roasting)
             # UAC_FLAG_DONT_REQUIRE_PREAUTH = 0x00040000
-            if entry.userAccountControl and (int(entry.userAccountControl.value) & 0x00040000):
+            if uac & 0x00040000:
+                user_obj.is_roastable_asrep = True
                 log.success(f"VULNERABLE: User '{name}' does NOT require Kerberos preauthentication (AS-REP Roasting possible).")
 
     def get_domain_controllers(self):
@@ -186,10 +193,7 @@ class ADEnumerator:
         for entry in self.conn.entries:
             hostname = str(entry.dNSHostName)
             log.evidence(f"Domain Controller Found: {hostname}")
-            self.collected_dcs.append({
-                "name": hostname.split('.')[0],
-                "dn": str(entry.distinguishedName)
-            })
+            self.collected_dcs.append(ADComputer(name=hostname.split('.')[0], dn=str(entry.distinguishedName), is_dc=True))
 
     def check_dcsync_rights(self):
         log.info("Checking for Suspect DCSync Rights...")
@@ -396,10 +400,10 @@ class ADEnumerator:
         default_nc, _ = self.get_naming_contexts()
         self.conn.search(default_nc, "(objectClass=computer)", attributes=['dNSHostName', 'distinguishedName'])
         for entry in self.conn.entries:
-             self.collected_computers.append({
-                 "name": str(entry.dNSHostName).split('.')[0],
-                 "dn": str(entry.distinguishedName)
-             })
+             self.collected_computers.append(ADComputer(
+                 name=str(entry.dNSHostName).split('.')[0],
+                 dn=str(entry.distinguishedName)
+             ))
 
     def verify_user_kerberos(self):
         log.info(f"Attempting to verify user '{self.user}' via Kerberos (Port 88)...")
@@ -414,13 +418,14 @@ class ADEnumerator:
             
             # If we get here, we got a TGT! 
             log.success(f"User '{self.user}' EXISTS and is VULNERABLE to AS-REP Roasting! (TGT received without password)")
-            self.collected_users.append({"name": self.user, "status": "AS-REP Roastable"})
+            # Create a partial ADUser
+            self.collected_users.append(ADUser(name=self.user, is_roastable_asrep=True))
             
         except Exception as e:
             error_msg = str(e)
             if "KDC_ERR_PREAUTH_REQUIRED" in error_msg or "SessionError: KDC_ERR_PREAUTH_REQUIRED" in error_msg:
                 log.success(f"User '{self.user}' EXISTS! (Pre-Auth Required)")
-                self.collected_users.append({"name": self.user, "status": "Active"})
+                self.collected_users.append(ADUser(name=self.user))
             elif "KDC_ERR_C_PRINCIPAL_UNKNOWN" in error_msg:
                 log.fail(f"User '{self.user}' DOES NOT EXIST.")
             else:

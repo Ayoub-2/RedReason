@@ -1,6 +1,7 @@
 import json
 import os
 from core.logger import log
+from core.types import ADUser, ADComputer
 
 class BloodHoundGenerator:
     def __init__(self, output_dir="reports"):
@@ -28,17 +29,18 @@ class BloodHoundGenerator:
         }
         
         for user in users_list:
+            # user is now an ADUser object
             u_obj = {
                 "Properties": {
                     "domain": domain,
-                    "name": f"{user.get('name')}@{domain}",
-                    "distinguishedname": user.get('dn'),
-                    "description": user.get('description'),
-                    "admincount": True if user.get('adminCount') == 1 else False,
-                    "enabled": True, # Placeholder, real would parse UAC
-                    "passwordlastset": user.get('pwdLastSet')
+                    "name": f"{user.name}@{domain}",
+                    "distinguishedname": user.dn,
+                    "description": user.description,
+                    "admincount": user.admin_count,
+                    "enabled": not bool(user.uac_flags & 0x2), # ACCOUNTDISABLE = 0x2
+                    "passwordlastset": user.password_last_set
                 },
-                "ObjectIdentifier": user.get('sid') or f"{user.get('name')}@{domain}", # Fallback
+                "ObjectIdentifier": user.sid or f"{user.name}@{domain}", 
                 "Aces": [],
                 "SPNTargets": [],
                 "HasSIDHistory": [],
@@ -63,15 +65,16 @@ class BloodHoundGenerator:
         }
         
         for comp in computers_list:
+            c_name = comp.name
             c_obj = {
                 "Properties": {
                     "domain": domain,
-                    "name": f"{comp.get('name')}.{domain}",
-                    "distinguishedname": comp.get('dn'),
-                    "haslaps": False,
+                    "name": f"{c_name}.{domain}",
+                    "distinguishedname": comp.dn,
+                    "haslaps": comp.has_laps,
                     "enabled": True
                 },
-                "ObjectIdentifier": f"{comp.get('name')}.{domain}",
+                "ObjectIdentifier": f"{c_name}.{domain}",
                 "Aces": [],
                 "IncomingRules": [],
                 "OutgoingRules": [],
