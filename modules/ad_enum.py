@@ -334,7 +334,8 @@ class ADEnumerator(RedReasonModule):
         for entry in self.conn.entries:
             # Primitive check: just logging existence for now. Deep parsing would check for unknown SIDs in DACL.
             log.info("AdminSDHolder object found. Manual review of ACLs recommended for persistence.")
-            # Implementation of full SD parsing is complex for this snippet, but placeholder is here.
+            # Current Limitation: Full SD parsing for DCSync analysis is simulated for this PoC.
+            # We assume presence of the SD implies we *could* analyze it offline.
 
     def assess_remote_exposure(self):
         log.info("Assessing Remote Service Exposure (via SPNs)...")

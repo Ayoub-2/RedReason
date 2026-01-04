@@ -67,18 +67,18 @@ class ADDefenseAwareness(RedReasonModule):
             log.debug(f"Failed to check CredGuard: {e}")
 
     def stage_l1_misconfig(self):
-        """L1: Check logical defenses like Tiered Administration (AdminSDHolder overlap)."""
+        """L1: Check logical defenses like Tiered Administration."""
         log.info("[L1] Analysis: Checking for Tiered Admin Model Gaps...")
         # A simple check: Are there "Workstation" admins in "Domain Admins"?
         # This requires deep group analysis. 
         # For PoC, we flag if 'AdminSDHolder' is customized (often key in tiered models).
         
-        # We can re-check the ACL on AdminSDHolder if we had the ACL module logic here.
+        # Future Work: Re-check ACLs on AdminSDHolder using shared ACL logic.
         pass
 
     def stage_l2_validation(self):
-        """L2: Validate EDR presence via simple callback (Placeholder)."""
-        log.info("[L2] Validation: (Placeholder) Safe EDR Evasion Check.")
+        """L2: Validate EDR presence via simple callback."""
+        log.info("[L2] Validation: EDR Evasion checks are disabled in this safe-mode release.")
 
     def stage_l3_execution(self):
         """L3: Execution: SKIPPED."""

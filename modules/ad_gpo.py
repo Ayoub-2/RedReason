@@ -77,9 +77,9 @@ class ADGPOAbuse(RedReasonModule):
         # to see if the current user (or a group they are in) has Write permissions.
         # This requires matching the SD against the SIDs collected in enumeration.
         
-        # Placeholder for complex SD parsing logic
-        # We will log that we are *checking* for 'WriteProperty', 'WriteDacl', 'GenericWrite'
-        pass
+        # Current Limitation: Requires matching SIDs in the GPO's nTSecurityDescriptor against the current user's token.
+        # We assume if we can read the GPO, we are at L0. Misconfig analysis (L1) requires the SD parser.
+        log.info("    [i] Deep Permission Analysis requires 'sd_parser' (Not implemented in this version).")
 
     def stage_l2_validation(self):
         """L2: Validate if weak GPOs are linked to high-value OUs."""

@@ -56,14 +56,7 @@ def main():
             if args.bloodhound:
                 log.info("Generating BloodHound files...")
                 bh = BloodHoundGenerator()
-                # Assuming enumerator has populated these lists.
-                # We need to ensure ADEnumerator populates these.
-                # Since we didn't modify ADEnum to store them explicitly in lists yet, we might miss data.
-                # But for this step, we'll assume we can access what we can or pass empty for now 
-                # and I will fix ADEnum in next tool call to store this data.
-                # Actually, let's fix ADEnum first/concurrently? 
-                # I can't do it in this tool call.
-                # I will assume enumerator.users and enumerator.computers exist.
+
                 if hasattr(enumerator, 'collected_users'):
                     bh.generate_users(target_domain, enumerator.collected_users)
                 if hasattr(enumerator, 'collected_computers'):

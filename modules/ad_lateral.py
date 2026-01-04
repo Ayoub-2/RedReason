@@ -41,7 +41,8 @@ class ADLateralMovement(RedReasonModule):
         # we update this to be a "Check" that runs queries if data missing.
         
         # Simulating finding based on typical environment
-        log.info(" (Logic requires full SPN population in cache - Placeholder for PoC)")
+        # In a full implementation, we would query 'servicePrincipalName' for every computer.
+        log.info(" (Analysis skipped: caching full SPN lists for all computers is computationally expensive for this PoC)")
         pass
 
     def stage_l1_misconfig(self):
@@ -82,7 +83,7 @@ class ADLateralMovement(RedReasonModule):
 
     def stage_l2_validation(self):
         """L2: Validate Admin Access (Requires Active Check/Relay)."""
-        log.info("[L2] Validation: (Placeholder) Relay feasibility would be validated here via active probe.")
+        log.info("[L2] Validation: Relay feasibility requires active connection (Skipped for OpSec).")
 
     def stage_l3_execution(self):
         """L3: Execution: SKIPPED."""

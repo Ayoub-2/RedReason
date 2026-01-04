@@ -105,8 +105,9 @@ class ADCSAbuse(RedReasonModule):
             log.fail(f"[L1] Error analyzing templates: {e}")
 
     def stage_l2_validation(self):
-        """L2: Validate enrollment rights (Requires resolving SD against current user)."""
-        log.info("[L2] Validation: (Placeholder) Validating enrollment rights on found templates.")
+        """L2: Validate enrollment rights."""
+        # Validation requires checking if the user in 'user' has 'Enroll' rights on the template ACL.
+        log.info("[L2] Validation: Enrollment Rights verification requires ACL parsing logic.")
 
     def stage_l3_execution(self):
         """L3: Execution: Request Malicious Cert (SKIP)."""

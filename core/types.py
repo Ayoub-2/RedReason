@@ -33,8 +33,7 @@ class ADUser(RedReasonObject):
 
     @classmethod
     def from_dict(cls, data):
-        # Handle specific field overrides if necessary, or just rely on inherited + kwargs
-        # Dataclass reconstruction from dict is straightforward if keys match
+
         cleaned = {k: v for k, v in data.items() if k in cls.__annotations__}
         return cls(**cleaned)
 
