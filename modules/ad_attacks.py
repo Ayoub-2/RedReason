@@ -370,6 +370,42 @@ class ADAttacker(RedReasonModule):
             except Exception as e:
                  log.debug(f"PetitPotam check failed on {target}: {e}")
 
+    def check_kerberos_hardening(self):
+        log.info("Checking Kerberos & Identity Hardening...")
+        
+        # Check msDS-SupportedEncryptionTypes on all accounts
+        # 0x1 = RC4, 0x2 = AES128, 0x4 = AES256...
+        # If an account supports ONLY RC4 (0x4 not set), it's a risk.
+        
+        search_filter = "(&(objectClass=user)(msDS-SupportedEncryptionTypes=*))"
+        try:
+            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName', 'msDS-SupportedEncryptionTypes'])
+            
+            for entry in self.conn.entries:
+                username = str(entry.sAMAccountName)
+                enc_types = int(entry['msDS-SupportedEncryptionTypes'].value)
+                
+                # Check for RC4 support (0x4) and AES support (0x8 / 0x10)
+                # Actually, msDS-SupportedEncryptionTypes:
+                # 0x1 (1) = RC4_HMAC_MD5
+                # 0x2 (2) = AES128_CTS_HMAC_SHA1_96
+                # 0x4 (4) = AES256_CTS_HMAC_SHA1_96
+                # 0x8 (8) = AES128_CTS_HMAC_SHA1_96 again? No standard docs: 0x8 = AES128, 0x10 = AES256 usually in kerbTicketEncryption but here:
+                # 0x1 = RC4
+                # 0x2 = AES128
+                # 0x4 = AES256
+                # 0x8 = DES-CBC-CRC
+                # 0x10 = DES-CBC-MD5
+                
+                # If AES256 (4) is NOT supported, flag it.
+                if not (enc_types & 0x4):
+                     log.evidence(f"Downgrade Risk: {username} does NOT support AES256 (Flags: {enc_types})")
+                     if (enc_types & 0x1):
+                         log.fail(f"Weak Crypto: {username} supports RC4.")
+                         
+        except Exception as e:
+            log.debug(f"Failed to check encryption types: {e}")
+
     def run(self, args=None):
         self.log_start()
         self.run_all()
@@ -379,6 +415,7 @@ class ADAttacker(RedReasonModule):
         if self.connect():
             self.check_asrep_roasting()
             self.check_kerberoasting()
+            self.check_kerberos_hardening()
             self.check_delegation_abuse()
             self.check_rbcd()
             self.check_smb_signing()

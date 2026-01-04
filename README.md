@@ -16,15 +16,24 @@ RedReason is built on a modular architecture designed for "Senior Red Team" oper
 See [Developer Guide](docs/developer_guide.md) for instructions on creating new modules.
 
 ## Features
-- **Enumeration**: 
-    - Users (UAC, Password Age, Description Analysis)
-2. **Attacks**:
-    - Kerberoasting (Saves hashes to `reports/hashes_kerb.txt`)
-    - AS-REP Roasting (Saves hashes to `reports/hashes_asrep.txt`)
-    - Delegation Abuse Detection (Unconstrained & Constrained)
-    - Pass-the-Hash Support
-3. **Reasoning Engine**: Filters False Positives based on prerequisites.
-4. **Reporting**: Generates Markdown and JSON reports.
+- **Enumeration** (L0-L2 Maturity):
+    - Users, Computers, Trusts, LAPS
+    - **DNS**: Infrastructure discovery via AD-Integrated zones.
+    - **ACLs**: Dangerous ACE detection (GenericAll, WriteDACL).
+    - **GPO**: Policy weakness and linkage analysis.
+    - **ADCS**: Enterprise CA and ESC1/ESC8 misconfiguration detection.
+    - **Lateral**: WinRM/RDP exposure mapping and LAPS coverage.
+    - **Defense**: Credential Guard and Defensive Posture checks.
+
+- **Attacks** (L3 Execution):
+    - **Kerberoasting**: (Saves hashes to `reports/hashes_kerb.txt`)
+    - **AS-REP Roasting**: (Saves hashes to `reports/hashes_asrep.txt`)
+    - **Identity Hardening**: Checks for encryption downgrade risks (RC4/DES).
+    - **Post-Exploitation**: Golden Ticket forging capabilities.
+
+- **Reasoning Engine**: 
+    - Filters False Positives based on prerequisites.
+    - Enforces **Maturity Model** (Presence -> Misconfig -> Validation -> Execution).
 
 ## MITRE ATT&CK Mapping
 RedReason maps its capabilities to the MITRE ATT&CK framework. See full details in [docs/mitre_mapping.md](docs/mitre_mapping.md).
@@ -47,8 +56,14 @@ docker build -t redreason .
 Mount a volume to `/app/reports` to access generated reports and dumped hashes.
 
 ```bash
-# Standard Scan
-docker run --rm -v ${PWD}/reports:/app/reports redreason --target <IP> --domain <DOMAIN> --user <USER> --password <PASS>
+# Standard Scan (All checks)
+docker run --rm -v ${PWD}/reports:/app/reports redreason --target <IP> --domain <DOMAIN> --user <USER> --password <PASS> --module all
+
+# Specific Vector Scans
+docker run ... --module acl      # Authorization Abuse
+docker run ... --module gpo      # Group Policy Abuse
+docker run ... --module cs       # ADCS Abuse
+docker run ... --module defense  # Defensive Posture
 
 # Pass-the-Hash
 docker run --rm -v ${PWD}/reports:/app/reports redreason --target <IP> --domain <DOMAIN> --user <USER> --hashes <LM:NT>

@@ -53,8 +53,47 @@ You can limit the operation to just enumeration or just attacks using `--module`
 ```
 *Useful if you already know the lay of the land and just want to check for vulns like Kerberoasting.*
 
+### Advanced Modules (Phase 7 Vectors)
+RedReason supports granular targeting.
+
+**Authorized Abuse (ACLs)**:
+```bash
+--module acl
+```
+*Identifies Dangerous ACEs (GenericAll, WriteDACL, etc).*
+
+**Group Policy Abuse (GPO)**:
+```bash
+--module gpo
+```
+*Checks for weak GPO permissions and risky linkages.*
+
+**ADCS Abuse**:
+```bash
+--module cs
+```
+*Scans for Vulnerable Templates (ESC1) and Enterprise CAs.*
+
+**Lateral Movement Exposure**:
+```bash
+--module lateral
+```
+*Passive checks for LAPS, SPN exposure (WinRM/RDP).*
+
+**Defensive Posture**:
+```bash
+--module defense
+```
+*Checks for Credential Guard and other hardening controls.*
+
+### Post-Exploitation
+```bash
+--module post
+```
+*Run this AFTER enumeration to find active sessions (User Hunter) or forge tickets.*
+
 ### Debug Mode
-If the connection is failing, use `--debug` to see detailed connection logs (LDAP binds, Kerberos errors).
+If the connection is failing, use `--debug` to see detailed connection logs.
 
 ```bash
 --debug

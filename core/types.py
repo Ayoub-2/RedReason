@@ -63,3 +63,14 @@ class ADDnsNode(RedReasonObject):
     def from_dict(cls, data):
         cleaned = {k: v for k, v in data.items() if k in cls.__annotations__}
         return cls(**cleaned)
+
+@dataclass
+class ADGPO(RedReasonObject):
+    display_name: Optional[str] = None
+    gpc_file_sys_path: Optional[str] = None
+    is_linked: bool = False
+    
+    @classmethod
+    def from_dict(cls, data):
+        cleaned = {k: v for k, v in data.items() if k in cls.__annotations__}
+        return cls(**cleaned)

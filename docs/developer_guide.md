@@ -32,12 +32,30 @@ class MyCustomModule(RedReasonModule):
         self.description = "Performs specific custom checks."
         self.target = target
 
-    def run(self, args=None):
         self.log_start()
         # Implementation Logic
-        log.info(f"Checking {self.target}...")
+        if self.connect():
+             self.execute_maturity_flow()
         self.log_end()
+
+    # Implement Stages
+    def stage_l0_presence(self):
+        log.info("L0: Checking feature presence...")
+
+    def stage_l1_misconfig(self):
+        log.info("L1: Checking misconfigurations...")
 ```
+
+## 3a. Module Maturity Model (L0-L4)
+All new modules should follow the **Maturity Model** by implementing the following methods:
+
+1.  **`stage_l0_presence()`**: Is the service/feature present? (Enumeration)
+2.  **`stage_l1_misconfig()`**: Is it misconfigured? (Detection)
+3.  **`stage_l2_validation()`**: Is it exploitable *for us*? (Validation)
+4.  **`stage_l3_execution()`**: Execute attack (Requires explicit approval/flag).
+5.  **`stage_l4_suggestions()`**: Remediation advice (Reasoning).
+
+The base `RedReasonModule` class provides the `execute_maturity_flow()` helper to run these in order.
 
 ## 4. State Sharing
 Modules can accept `enumeration_data` in their `__init__` to access data collected by previous modules.

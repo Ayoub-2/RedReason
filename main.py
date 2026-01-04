@@ -4,7 +4,7 @@ from core.logger import log, ReasoningLogger
 from core.report import ReportGenerator
 from core.bloodhound import BloodHoundGenerator
 
-from modules import ad_enum, ad_attacks, ad_post
+from modules import ad_enum, ad_attacks, ad_post, ad_acl, ad_gpo, ad_cs, ad_lateral, ad_defense
 
 def main():
     parser = argparse.ArgumentParser(description="RedReason - Autonomous Red Team Operation Tool")
@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--password", help="Password for authentication")
     parser.add_argument("--hashes", help="NTLM hashes (LM:NT)")
     parser.add_argument("--domain", help="Domain Name (if different from target)")
-    parser.add_argument("--module", choices=["enum", "attack", "post", "all"], default="all", help="Operation module to run")
+    parser.add_argument("--module", choices=["enum", "attack", "post", "acl", "gpo", "cs", "lateral", "defense", "all"], default="all", help="Operation module to run")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument('--bloodhound', action='store_true', help='Generate BloodHound compatible output files')
     parser.add_argument('--stealth', action='store_true', help='Enable Stealth Mode (Passive Checks Only)')
@@ -107,6 +107,86 @@ def main():
                 enumeration_data=current_state
             )
             post_ex.run(args)
+
+
+        if args.module in ["acl", "all"]:
+            log.info("Running ACL & Authorization Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            acl_mod = ad_acl.ADACLAbuse(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            acl_mod.run(args)
+
+
+        if args.module in ["gpo", "all"]:
+            log.info("Running GPO Abuse Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            gpo_mod = ad_gpo.ADGPOAbuse(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            gpo_mod.run(args)
+
+
+        if args.module in ["cs", "all"]:
+            log.info("Running ADCS Abuse Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            cs_mod = ad_cs.ADCSAbuse(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            cs_mod.run(args)
+
+
+        if args.module in ["lateral", "all"]:
+            log.info("Running Lateral Movement Exposure Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            lat_mod = ad_lateral.ADLateralMovement(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            lat_mod.run(args)
+
+
+        if args.module in ["defense", "all"]:
+            log.info("Running Defensive Posture Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            def_mod = ad_defense.ADDefenseAwareness(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            def_mod.run(args)
 
 
     except KeyboardInterrupt:
