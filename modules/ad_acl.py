@@ -74,10 +74,13 @@ class ADACLAbuse(RedReasonModule):
         # For PoC, we scan the collected objects from enumeration
         count = 0 
         for user in self.enumeration_data.collected_users:
-            # Focus on Admin accounts or High Priv for noise reduction
-            if user.admin_count: 
-                self.analyze_acl(user.dn, "User")
-                count += 1
+            try:
+                # Focus on Admin accounts or High Priv for noise reduction
+                if user.admin_count: 
+                    self.analyze_acl(user.dn, "User")
+                    count += 1
+            except Exception as e:
+                pass
                 
         log.info(f"[L1] Analyzed ACLs for {count} high-value objects.")
 

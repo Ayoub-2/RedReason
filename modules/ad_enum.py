@@ -56,58 +56,70 @@ class ADEnumerator(RedReasonModule):
 
     def check_machine_account_quota(self):
         log.info("Checking Machine Account Quota...")
-        default_nc, _ = self.get_naming_contexts()
-        self.conn.search(default_nc, "(objectClass=domain)", attributes=['ms-DS-MachineAccountQuota'])
-        
-        for entry in self.conn.entries:
-            quota = entry['ms-DS-MachineAccountQuota']
-            if quota and int(quota.value) > 0:
-                log.evidence(f"Machine Account Quota: {quota}")
-                log.hypothesis("Any user can add machine accounts (potential for shadow credentials/relaying abuse).")
-            else:
-                log.info(f"Machine Account Quota check passed (Quota: {quota})")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            self.conn.search(default_nc, "(objectClass=domain)", attributes=['ms-DS-MachineAccountQuota'])
+            
+            for entry in self.conn.entries:
+                quota = entry['ms-DS-MachineAccountQuota']
+                if quota and int(quota.value) > 0:
+                    log.evidence(f"Machine Account Quota: {quota}")
+                    log.hypothesis("Any user can add machine accounts (potential for shadow credentials/relaying abuse).")
+                else:
+                    log.info(f"Machine Account Quota check passed (Quota: {quota})")
+        except Exception as e:
+            log.debug(f"Failed to check Machine Account Quota: {e}")
 
     def check_password_policy(self):
         log.info("Checking Domain Password Policy...")
-        default_nc, _ = self.get_naming_contexts()
-        # Basic domain policy
-        self.conn.search(default_nc, "(objectClass=domainDNS)", attributes=['minPwdLength', 'pwdProperties', 'lockoutThreshold'])
-        for entry in self.conn.entries:
-            log.evidence(f"Domain Password Policy: MinLength={entry.minPwdLength}, LockoutThreshold={entry.lockoutThreshold}")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            # Basic domain policy
+            self.conn.search(default_nc, "(objectClass=domainDNS)", attributes=['minPwdLength', 'pwdProperties', 'lockoutThreshold'])
+            for entry in self.conn.entries:
+                log.evidence(f"Domain Password Policy: MinLength={entry.minPwdLength}, LockoutThreshold={entry.lockoutThreshold}")
+        except Exception as e:
+             log.debug(f"Failed to check Password Policy: {e}")
 
     def get_domain_trusts(self):
         log.info("Enumerating Domain Trusts...")
-        default_nc, _ = self.get_naming_contexts()
-        self.conn.search(default_nc, "(objectClass=trustedDomain)", attributes=['flatName', 'name', 'trustDirection', 'trustType', 'trustAttributes'])
-        
-        if not self.conn.entries:
-            log.info("No Domain Trusts found.")
-        
-        for entry in self.conn.entries:
-            direction = entry.trustDirection
-            dir_str = "Attributes: " + str(entry.trustAttributes)
-            # 1=Inbound, 2=Outbound, 3=Bidirectional
-            if direction == 1: dir_str = "Inbound"
-            elif direction == 2: dir_str = "Outbound"
-            elif direction == 3: dir_str = "Bidirectional"
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            self.conn.search(default_nc, "(objectClass=trustedDomain)", attributes=['flatName', 'name', 'trustDirection', 'trustType', 'trustAttributes'])
             
-            log.evidence(f"Trust Found: {entry.name} ({entry.flatName}) - {dir_str}")
+            if not self.conn.entries:
+                log.info("No Domain Trusts found.")
+            
+            for entry in self.conn.entries:
+                direction = entry.trustDirection
+                dir_str = "Attributes: " + str(entry.trustAttributes)
+                # 1=Inbound, 2=Outbound, 3=Bidirectional
+                if direction == 1: dir_str = "Inbound"
+                elif direction == 2: dir_str = "Outbound"
+                elif direction == 3: dir_str = "Bidirectional"
+                
+                log.evidence(f"Trust Found: {entry.name} ({entry.flatName}) - {dir_str}")
+        except Exception as e:
+            log.debug(f"Failed to enumerate Trusts: {e}")
 
     def get_group_members(self):
         log.info("Enumerating High-Value Group Members...")
-        default_nc, _ = self.get_naming_contexts()
-        target_groups = ["Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Remote Desktop Users", "Account Operators", "Backup Operators", "Server Operators", "Print Operators", "Group Policy Creator Owners"]
-        
-        for group in target_groups:
-            self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])
-            for entry in self.conn.entries:
-                members = entry.member
-                if members:
-                    log.evidence(f"Group '{group}' Members:")
-                    for m in members:
-                        log.evidence(f"  - {m}")
-                else:
-                    log.info(f"Group '{group}' has no members or could not be queried.")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            target_groups = ["Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Remote Desktop Users", "Account Operators", "Backup Operators", "Server Operators", "Print Operators", "Group Policy Creator Owners"]
+            
+            for group in target_groups:
+                self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])
+                for entry in self.conn.entries:
+                    members = entry.member
+                    if members:
+                        log.evidence(f"Group '{group}' Members:")
+                        for m in members:
+                            log.evidence(f"  - {m}")
+                    else:
+                        log.info(f"Group '{group}' has no members or could not be queried.")
+        except Exception as e:
+            log.debug(f"Failed to enumerate group members: {e}")
 
     def check_laps(self):
         log.info("Checking for LAPS...")
@@ -156,50 +168,56 @@ class ADEnumerator(RedReasonModule):
 
     def get_users_detailed(self):
         log.info("Enumerating Users (Detailed)...")
-        default_nc, _ = self.get_naming_contexts()
-        # Users with descriptions often contain passwords
-        self.conn.search(default_nc, "(&(objectClass=user)(objectCategory=person))", attributes=['sAMAccountName', 'description', 'pwdLastSet', 'badPwdCount', 'userAccountControl', 'adminCount', 'objectSid', 'distinguishedName'])
-        
-        for entry in self.conn.entries:
-            name = str(entry.sAMAccountName)
-            desc = entry.description
-            pwd_ts = int(entry.pwdLastSet.value.timestamp()) if entry.pwdLastSet else 0
-            uac = int(entry.userAccountControl.value) if entry.userAccountControl else 0
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            # Users with descriptions often contain passwords
+            self.conn.search(default_nc, "(&(objectClass=user)(objectCategory=person))", attributes=['sAMAccountName', 'description', 'pwdLastSet', 'badPwdCount', 'userAccountControl', 'adminCount', 'objectSid', 'distinguishedName'])
             
-            user_obj = ADUser(
-                name=name,
-                dn=str(entry.distinguishedName),
-                sid=str(entry.objectSid) if 'objectSid' in entry else "",
-                description=str(desc) if desc else "",
-                admin_count=bool(entry.adminCount.value) if entry.adminCount else False,
-                password_last_set=pwd_ts,
-                uac_flags=uac
-            )
+            for entry in self.conn.entries:
+                name = str(entry.sAMAccountName)
+                desc = entry.description
+                pwd_ts = int(entry.pwdLastSet.value.timestamp()) if entry.pwdLastSet else 0
+                uac = int(entry.userAccountControl.value) if entry.userAccountControl else 0
+                
+                user_obj = ADUser(
+                    name=name,
+                    dn=str(entry.distinguishedName),
+                    sid=str(entry.objectSid) if 'objectSid' in entry else "",
+                    description=str(desc) if desc else "",
+                    admin_count=bool(entry.adminCount.value) if entry.adminCount else False,
+                    password_last_set=pwd_ts,
+                    uac_flags=uac
+                )
 
-            # Store for BloodHound
-            self.collected_users.append(user_obj)
+                # Store for BloodHound
+                self.collected_users.append(user_obj)
 
-            if desc:
-                log.evidence(f"User '{name}' has a description: '{desc}'")
-                log.hypothesis("Check description for passwords or sensitive information.")
-            
-            # Check for 'Don't Require Preauthentication' (AS-REP Roasting)
-            # UAC_FLAG_DONT_REQUIRE_PREAUTH = 0x00040000
-            if uac & 0x00040000:
-                user_obj.is_roastable_asrep = True
-                log.success(f"VULNERABLE: User '{name}' does NOT require Kerberos preauthentication (AS-REP Roasting possible).")
+                if desc:
+                    log.evidence(f"User '{name}' has a description: '{desc}'")
+                    log.hypothesis("Check description for passwords or sensitive information.")
+                
+                # Check for 'Don't Require Preauthentication' (AS-REP Roasting)
+                # UAC_FLAG_DONT_REQUIRE_PREAUTH = 0x00040000
+                if uac & 0x00040000:
+                    user_obj.is_roastable_asrep = True
+                    log.success(f"VULNERABLE: AS-REP Roasting: User '{name}' does NOT require Kerberos preauthentication.")
+        except Exception as e:
+            log.debug(f"Failed to enumerate users: {e}")
 
     def get_domain_controllers(self):
         log.info("Enumerating Domain Controllers...")
-        default_nc, _ = self.get_naming_contexts()
-        # Domain controllers are servers with the 'userAccountControl' bit for 'SERVER_TRUST_ACCOUNT' (0x2000) set
-        # and also have the 'primaryGroupID' of 'Domain Controllers' (516)
-        self.conn.search(default_nc, "(&(objectClass=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))", attributes=['dNSHostName', 'distinguishedName'])
-        
-        for entry in self.conn.entries:
-            hostname = str(entry.dNSHostName)
-            log.evidence(f"Domain Controller Found: {hostname}")
-            self.collected_dcs.append(ADComputer(name=hostname.split('.')[0], dn=str(entry.distinguishedName), is_dc=True))
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            # Domain controllers are servers with the 'userAccountControl' bit for 'SERVER_TRUST_ACCOUNT' (0x2000) set
+            # and also have the 'primaryGroupID' of 'Domain Controllers' (516)
+            self.conn.search(default_nc, "(&(objectClass=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))", attributes=['dNSHostName', 'distinguishedName'])
+            
+            for entry in self.conn.entries:
+                hostname = str(entry.dNSHostName)
+                log.evidence(f"Domain Controller Found: {hostname}")
+                self.collected_dcs.append(ADComputer(name=hostname.split('.')[0], dn=str(entry.distinguishedName), is_dc=True))
+        except Exception as e:
+            log.debug(f"Failed to enumerate DCs: {e}")
 
     def get_dns_records(self):
         log.info("Enumerating AD-Integrated DNS Records...")
@@ -233,152 +251,170 @@ class ADEnumerator(RedReasonModule):
         if found:
             log.success(f"Found {found} DNS records.")
         log.info("Checking for Suspect DCSync Rights...")
-        default_nc, _ = self.get_naming_contexts()
-        # Read the nTSecurityDescriptor of the Domain Root
-        self.conn.search(default_nc, "(objectClass=domain)", attributes=['nTSecurityDescriptor'], search_scope=LEVEL)
-        
-        for entry in self.conn.entries:
-            raw_sd = entry['nTSecurityDescriptor'].value
-            if raw_sd:
-                try:
-                    sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=raw_sd)
-                    for ace in sd['Dacl'].aces:
-                        # DS-Replication-Get-Changes (1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)
-                        # DS-Replication-Get-Changes-All (1131f6ad-9c07-11d1-f79f-00c04fc2dcd2)
-                        DCSYNC_RIGHTS = [
-                            '1131f6aa-9c07-11d1-f79f-00c04fc2dcd2',
-                            '1131f6ad-9c07-11d1-f79f-00c04fc2dcd2'
-                        ]
-                        
-                        try:
-                            ace_type = ace['AceType']
-                            # ACCESS_ALLOWED_OBJECT_ACE = 0x05
-                            if ace_type == 0x05:
-                                # Check if ObjectType is present (ACE_OBJECT_TYPE_PRESENT = 0x01)
-                                if ace['Ace']['Flags'] & 0x01:
-                                    # ObjectType is bytes, convert to string UUID
-                                    import uuid
-                                    obj_type_bytes = ace['Ace']['ObjectType']
-                                    obj_uuid = str(uuid.UUID(bytes_le=obj_type_bytes))
-                                    
-                                    if obj_uuid in DCSYNC_RIGHTS:
-                                        sid = ace['Ace']['Sid'].formatCanonical()
-                                        log.evidence(f"DCSync Right Found! SID: {sid} has right {obj_uuid}")
-                                        log.hypothesis(f"  -> Principal {sid} can replicate secrets (DCSync).")
-                        except Exception as ex:
-                            pass
-                        
-                    log.info("DCSync Rights Check: Parsed SD (Deep analysis skipped in this snippet to avoid complexity).")
-                except Exception as e:
-                    log.debug(f"Failed to parse Domain SD: {e}")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            # Read the nTSecurityDescriptor of the Domain Root
+            self.conn.search(default_nc, "(objectClass=domain)", attributes=['nTSecurityDescriptor'], search_scope=LEVEL)
+            
+            for entry in self.conn.entries:
+                raw_sd = entry['nTSecurityDescriptor'].value
+                if raw_sd:
+                    try:
+                        sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=raw_sd)
+                        for ace in sd['Dacl'].aces:
+                            # DS-Replication-Get-Changes (1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)
+                            # DS-Replication-Get-Changes-All (1131f6ad-9c07-11d1-f79f-00c04fc2dcd2)
+                            DCSYNC_RIGHTS = [
+                                '1131f6aa-9c07-11d1-f79f-00c04fc2dcd2',
+                                '1131f6ad-9c07-11d1-f79f-00c04fc2dcd2'
+                            ]
+                            
+                            try:
+                                ace_type = ace['AceType']
+                                # ACCESS_ALLOWED_OBJECT_ACE = 0x05
+                                if ace_type == 0x05:
+                                    # Check if ObjectType is present (ACE_OBJECT_TYPE_PRESENT = 0x01)
+                                    if ace['Ace']['Flags'] & 0x01:
+                                        # ObjectType is bytes, convert to string UUID
+                                        import uuid
+                                        obj_type_bytes = ace['Ace']['ObjectType']
+                                        obj_uuid = str(uuid.UUID(bytes_le=obj_type_bytes))
+                                        
+                                        if obj_uuid in DCSYNC_RIGHTS:
+                                            sid = ace['Ace']['Sid'].formatCanonical()
+                                            log.evidence(f"DCSync Right Found! SID: {sid} has right {obj_uuid}")
+                                            log.hypothesis(f"  -> Principal {sid} can replicate secrets (DCSync).")
+                            except Exception as ex:
+                                pass
+                            
+                        log.info("DCSync Rights Check: Parsed SD (Deep analysis skipped in this snippet to avoid complexity).")
+                    except Exception as e:
+                        log.debug(f"Failed to parse Domain SD: {e}")
+        except Exception as e:
+            log.debug(f"Failed to check DCSync rights: {e}")
 
     def check_service_account_risks(self):
         log.info("Checking for High-Risk Service Accounts & Hygiene...")
-        default_nc, _ = self.get_naming_contexts()
-        
-        # 1. Get all admins
-        admins = set()
-        for group in ["Domain Admins", "Enterprise Admins", "Administrators"]:
-            self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            
+            # 1. Get all admins
+            admins = set()
+            for group in ["Domain Admins", "Enterprise Admins", "Administrators"]:
+                self.conn.search(default_nc, f"(&(objectClass=group)(cn={group}))", attributes=['member'])
+                for entry in self.conn.entries:
+                    for m in entry.member:
+                        admins.add(str(m))
+
+            # 2. Get users with SPNs + Hygiene Attributes
+            self.conn.search(default_nc, "(&(objectClass=user)(servicePrincipalName=*))", attributes=['distinguishedName', 'sAMAccountName', 'pwdLastSet', 'adminCount'])
+            
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+
             for entry in self.conn.entries:
-                for m in entry.member:
-                    admins.add(str(m))
+                dn = str(entry.distinguishedName)
+                name = str(entry.sAMAccountName)
+                
+                # Risk: Admin SPN
+                if dn in admins:
+                    log.success(f"CRITICAL: Service Account {name} is a HIGH PRIVILEGE account!")
+                    log.hypothesis(f"Kerberoasting {name} could yield Domain Admin access.")
+                
+                # Hygiene: Password Age
+                if entry.pwdLastSet:
+                    pwd_set = entry.pwdLastSet.value
+                    if pwd_set:
+                        # ldap3 returns localized datetime, simple diff
+                        age = (current_time - pwd_set).days
+                        if age > 365:
+                            log.evidence(f"Hygiene: Service Account {name} password is {age} days old.")
 
-        # 2. Get users with SPNs + Hygiene Attributes
-        self.conn.search(default_nc, "(&(objectClass=user)(servicePrincipalName=*))", attributes=['distinguishedName', 'sAMAccountName', 'pwdLastSet', 'adminCount'])
-        
-        current_time = datetime.datetime.now(datetime.timezone.utc)
-
-        for entry in self.conn.entries:
-            dn = str(entry.distinguishedName)
-            name = str(entry.sAMAccountName)
-            
-            # Risk: Admin SPN
-            if dn in admins:
-                log.success(f"CRITICAL: Service Account {name} is a HIGH PRIVILEGE account!")
-                log.hypothesis(f"Kerberoasting {name} could yield Domain Admin access.")
-            
-            # Hygiene: Password Age
-            if entry.pwdLastSet:
-                pwd_set = entry.pwdLastSet.value
-                if pwd_set:
-                    # ldap3 returns localized datetime, simple diff
-                    age = (current_time - pwd_set).days
-                    if age > 365:
-                        log.evidence(f"Hygiene: Service Account {name} password is {age} days old.")
-
-            # Hygiene: Shadow Admin (adminCount=1 but maybe not in DA)
-            if entry.adminCount and int(entry.adminCount.value) == 1 and dn not in admins:
-                 log.evidence(f"Hygiene: Service Account {name} has adminCount=1 (Potential old admin/Shadow Admin).")
+                # Hygiene: Shadow Admin (adminCount=1 but maybe not in DA)
+                if entry.adminCount and int(entry.adminCount.value) == 1 and dn not in admins:
+                     log.evidence(f"Hygiene: Service Account {name} has adminCount=1 (Potential old admin/Shadow Admin).")
+        except Exception as e:
+            log.debug(f"Failed to check service accounts: {e}")
 
     def check_kerberos_encryption_types(self):
         log.info("Checking Kerberos Encryption Types (Legacy Protocols)...")
-        default_nc, _ = self.get_naming_contexts()
-        # msDS-SupportedEncryptionTypes: 
-        # 0x1F = RC4, AES128, AES256...
-        # If value is 0 or 4 (RC4 only), it's weak.
-        # We look for computers/users where (msDS-SupportedEncryptionTypes=4) or missing allows RC4 fallback
-        
-        self.conn.search(default_nc, "(&(objectClass=user)(msDS-SupportedEncryptionTypes=4))", attributes=['sAMAccountName'])
-        for entry in self.conn.entries:
-             log.evidence(f"Weak Crypto: User {entry.sAMAccountName} supports ONLY RC4 encryption.")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            # msDS-SupportedEncryptionTypes: 
+            # 0x1F = RC4, AES128, AES256...
+            # If value is 0 or 4 (RC4 only), it's weak.
+            # We look for computers/users where (msDS-SupportedEncryptionTypes=4) or missing allows RC4 fallback
+            
+            self.conn.search(default_nc, "(&(objectClass=user)(msDS-SupportedEncryptionTypes=4))", attributes=['sAMAccountName'])
+            for entry in self.conn.entries:
+                 log.evidence(f"Weak Crypto: User {entry.sAMAccountName} supports ONLY RC4 encryption.")
+        except Exception as e:
+            log.debug(f"Failed to check encryption types: {e}")
 
     def check_adminsdholder(self):
         log.info("Checking AdminSDHolder for Backdoors...")
-        # Location: CN=AdminSDHolder,CN=System,DC=...
-        _, config_nc = self.get_naming_contexts() # Not config, it's in System container of Default NC
-        default_nc, _ = self.get_naming_contexts()
-        system_dn = f"CN=System,{default_nc}"
-        
-        self.conn.search(system_dn, "(cn=AdminSDHolder)", attributes=['nTSecurityDescriptor'])
-        for entry in self.conn.entries:
-            # Primitive check: just logging existence for now. Deep parsing would check for unknown SIDs in DACL.
-            log.info("AdminSDHolder object found. Manual review of ACLs recommended for persistence.")
-            # Current Limitation: Full SD parsing for DCSync analysis is simulated for this PoC.
-            # We assume presence of the SD implies we *could* analyze it offline.
+        try:
+            # Location: CN=AdminSDHolder,CN=System,DC=...
+            _, config_nc = self.get_naming_contexts() # Not config, it's in System container of Default NC
+            default_nc, _ = self.get_naming_contexts()
+            system_dn = f"CN=System,{default_nc}"
+            
+            self.conn.search(system_dn, "(cn=AdminSDHolder)", attributes=['nTSecurityDescriptor'])
+            for entry in self.conn.entries:
+                # Primitive check: just logging existence for now. Deep parsing would check for unknown SIDs in DACL.
+                log.info("AdminSDHolder object found. Manual review of ACLs recommended for persistence.")
+                # Current Limitation: Full SD parsing for DCSync analysis is simulated for this PoC.
+                # We assume presence of the SD implies we *could* analyze it offline.
+        except Exception as e:
+            log.debug(f"Failed to check AdminSDHolder: {e}")
 
     def assess_remote_exposure(self):
         log.info("Assessing Remote Service Exposure (via SPNs)...")
-        default_nc, _ = self.get_naming_contexts()
-        # Map services to risks
-        risky_services = {
-            "TERMSRV": "RDP Access (Remote GUI)",
-            "WSMAN": "WinRM Access (Remote Shell)",
-            "MSSQLSvc": "SQL Server (Data/XP_CMDSHELL)",
-            "CIFS": "File Sharing (SMB)"
-        }
-        
-        for svc, risk in risky_services.items():
-            filter_str = f"(&(objectClass=computer)(servicePrincipalName={svc}*))"
-            self.conn.search(default_nc, filter_str, attributes=['dNSHostName'])
-            count = len(self.conn.entries)
-            if count > 0:
-                log.info(f"Exposure: {count} hosts exposing {svc} ({risk}).")
-                if count < 5: # List them if few
-                    for e in self.conn.entries:
-                        log.evidence(f"  - {e.dNSHostName}")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            # Map services to risks
+            risky_services = {
+                "TERMSRV": "RDP Access (Remote GUI)",
+                "WSMAN": "WinRM Access (Remote Shell)",
+                "MSSQLSvc": "SQL Server (Data/XP_CMDSHELL)",
+                "CIFS": "File Sharing (SMB)"
+            }
+            
+            for svc, risk in risky_services.items():
+                filter_str = f"(&(objectClass=computer)(servicePrincipalName={svc}*))"
+                self.conn.search(default_nc, filter_str, attributes=['dNSHostName'])
+                count = len(self.conn.entries)
+                if count > 0:
+                    log.info(f"Exposure: {count} hosts exposing {svc} ({risk}).")
+                    if count < 5: # List them if few
+                        for e in self.conn.entries:
+                            log.evidence(f"  - {e.dNSHostName}")
+        except Exception as e:
+            log.debug(f"Failed to assess remote exposure: {e}")
 
     def assess_spray_feasibility(self):
         log.info("Assessing Password Spray Feasibility...")
-        default_nc, _ = self.get_naming_contexts()
-        
-        # 1. Check Policy
-        lockout = 0
-        self.conn.search(default_nc, "(objectClass=domainDNS)", attributes=['lockoutThreshold'])
-        if self.conn.entries:
-            l_val = self.conn.entries[0].lockoutThreshold
-            if l_val: lockout = int(l_val.value)
-        
-        # 2. Count Users
-        self.conn.search(default_nc, "(&(objectClass=user)(objectCategory=person))", attributes=['cn'])
-        user_count = len(self.conn.entries)
-        
-        log.info(f"Policy: Lockout at {lockout} attempts. Domain has {user_count} users.")
-        
-        if (lockout == 0 or lockout > 5) and user_count > 50:
-            log.success("VULNERABLE: Password Spraying is HIGHLY feasible (Weak Lockout + High User Count).")
-        else:
-            log.info("Password Spraying risk is moderate/low.")
+        try:
+            default_nc, _ = self.get_naming_contexts()
+            
+            # 1. Check Policy
+            lockout = 0
+            self.conn.search(default_nc, "(objectClass=domainDNS)", attributes=['lockoutThreshold'])
+            if self.conn.entries:
+                l_val = self.conn.entries[0].lockoutThreshold
+                if l_val: lockout = int(l_val.value)
+            
+            # 2. Count Users
+            self.conn.search(default_nc, "(&(objectClass=user)(objectCategory=person))", attributes=['cn'])
+            user_count = len(self.conn.entries)
+            
+            log.info(f"Policy: Lockout at {lockout} attempts. Domain has {user_count} users.")
+            
+            if (lockout == 0 or lockout > 5) and user_count > 50:
+                log.success("VULNERABLE: Password Spraying is HIGHLY feasible (Weak Lockout + High User Count).")
+            else:
+                log.info("Password Spraying risk is moderate/low.")
+        except Exception as e:
+            log.debug(f"Failed to assess spray feasibility: {e}")
 
     def check_adcs_templates(self):
         log.info("Checking AD CS Certificate Templates (ESC1)...")
@@ -504,12 +540,14 @@ class ADEnumerator(RedReasonModule):
                 self.assess_spray_feasibility()
                 log.info("Enumeration complete")
                 
-                # Save Session
-                sm = SessionManager(self.target)
                 sm.save_state(self.collected_users, self.collected_computers)
+                return True
+            else:
+                return False
         else:
             # Fallback to blind enumeration
             self.verify_user_kerberos()
+            return True
 
 def run(args):
     # Wrapper for main.py

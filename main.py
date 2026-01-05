@@ -4,7 +4,7 @@ from core.logger import log, ReasoningLogger
 from core.report import ReportGenerator
 from core.bloodhound import BloodHoundGenerator
 
-from modules import ad_enum, ad_attacks, ad_post, ad_acl, ad_gpo, ad_cs, ad_lateral, ad_defense
+from modules import ad_enum, ad_attacks, ad_post, ad_acl, ad_gpo, ad_cs, ad_lateral, ad_defense, ad_exchange
 
 def main():
     parser = argparse.ArgumentParser(description="RedReason - Autonomous Red Team Operation Tool")
@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--password", help="Password for authentication")
     parser.add_argument("--hashes", help="NTLM hashes (LM:NT)")
     parser.add_argument("--domain", help="Domain Name (if different from target)")
-    parser.add_argument("--module", choices=["enum", "attack", "post", "acl", "gpo", "cs", "lateral", "defense", "all"], default="all", help="Operation module to run")
+    parser.add_argument("--module", choices=["enum", "attack", "post", "acl", "gpo", "cs", "lateral", "defense", "exchange", "all"], default="all", help="Operation module to run")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument('--bloodhound', action='store_true', help='Generate BloodHound compatible output files')
     parser.add_argument('--stealth', action='store_true', help='Enable Stealth Mode (Passive Checks Only)')
@@ -51,7 +51,9 @@ def main():
             # This requires ad_enum.run() to return data or we act on the enumerator object.
             # ad_enum.run() just prints currently.
             # We'll need to modify ADEnumerator to store collected users/computers in self.users, etc.
-            enumerator.run_all()
+            if not enumerator.run_all():
+                log.fail("Critical Failure: Initial LDAP connection failed. Aborting operations.")
+                sys.exit(1)
             
             if args.bloodhound:
                 log.info("Generating BloodHound files...")
@@ -180,6 +182,22 @@ def main():
                 enumeration_data=current_state
             )
             def_mod.run(args)
+
+
+        if args.module in ["exchange", "all"]:
+            log.info("Running Exchange Operations Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            exch_mod = ad_exchange.ADExchangeOps(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            exch_mod.run(args)
 
 
     except KeyboardInterrupt:
