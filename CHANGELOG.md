@@ -38,6 +38,9 @@ All notable changes to the RedReason project.
 - `log.trace()` method for trace-level diagnostic logging.
 - Stealth mode status logging at startup when `--stealth` flag is enabled.
 
+### Changed
+- **Removed `--debug` flag**: Consolidated into `-v`, `-vv`, `-vvv` verbosity levels. Use `-vv` for DEBUG level (equivalent to old `--debug`), `-vvv` for TRACE level with exception tracebacks.
+
 ## [1.0.0] - 2026-01-07
 
 ### Added

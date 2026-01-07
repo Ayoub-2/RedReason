@@ -14,7 +14,6 @@ def main():
     parser.add_argument("--hashes", help="NTLM hashes (LM:NT)")
     parser.add_argument("--domain", help="Domain Name (if different from target)")
     parser.add_argument("--module", choices=["enum", "attack", "post", "acl", "gpo", "cs", "lateral", "defense", "exchange", "virt", "all"], default="all", help="Operation module to run")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase verbosity (-v, -vv, -vvv)")
     parser.add_argument('--bloodhound', action='store_true', help='Generate BloodHound compatible output files')
     parser.add_argument('--stealth', action='store_true', help='Enable Stealth Mode (Passive Checks Only)')
@@ -23,13 +22,13 @@ def main():
 
     # Re-init logger with appropriate level
     # Verbosity: 0=WARNING, 1=INFO (default), 2=DEBUG, 3+=TRACE (very verbose)
-    if args.debug or args.verbose >= 2:
+    if args.verbose >= 2:
         log.logger.setLevel("DEBUG")
     if args.verbose == 0:
         log.logger.setLevel("WARNING")
     
     # Set verbosity level in logger for internal tracking
-    log.set_verbosity(args.verbose if not args.debug else max(args.verbose, 2))
+    log.set_verbosity(args.verbose)
     
     log.info(f"Starting RedReason against {args.target}")
     
@@ -239,7 +238,7 @@ def main():
         log.fail("Operation interrupted by user")
     except Exception as e:
         log.fail(f"Unhandled Exception: {str(e)}")
-        if args.debug:
+        if args.verbose >= 3:
             import traceback
             tb_str = traceback.format_exc()
             log.trace(f"Exception Traceback:\n{tb_str}")

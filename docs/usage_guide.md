@@ -105,11 +105,13 @@ RedReason supports granular targeting.
 
 *Run this AFTER enumeration to find active sessions (User Hunter) or forge tickets.*
 
-### Debug Mode
-If the connection is failing, use `--debug` to see detailed connection logs.
+### Verbosity Control
+For detailed diagnostics, use `-v` (verbose), `-vv` (very verbose), or `-vvv` (trace level).
 
 ```bash
---debug
+-v         # Enable DEBUG level logging
+-vv        # Enable DEBUG level with more detail
+-vvv       # Enable TRACE level for granular diagnostics
 ```
 
 ---

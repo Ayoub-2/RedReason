@@ -1,6 +1,6 @@
-# RedReason v1.0.0 🛡️
+# RedReason v1.1.0 🛡️
 
-![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Version](https://img.shields.io/badge/Version-1.1.0-blue)
 
 An autonomous Red Team operator tool designed for the CRTP mindset.
 
@@ -80,3 +80,45 @@ docker run --rm -v ${PWD}/reports:/app/reports redreason --target <IP> --domain 
 pip install -r requirements.txt
 python main.py --target <IP> --domain <DOMAIN> --user <USER> --password <PASS>
 ```
+
+## Command-Line Options (v1.1.0+)
+
+### Verbosity Control
+Control output detail level with multi-level verbosity:
+```bash
+# Quiet mode (warnings only)
+python main.py --target <IP> ... --verbose 0
+
+# Normal mode (default, INFO level)
+python main.py --target <IP> ...
+
+# Verbose mode (DEBUG level, detailed checks)
+python main.py --target <IP> ... -v
+
+# Very verbose mode (TRACE level, granular diagnostics)
+python main.py --target <IP> ... -vvv
+```
+
+### Stealth Mode
+Passive-only scanning to avoid triggering detection systems:
+```bash
+# Enable stealth mode (skips active coercion attacks, RPC enumeration)
+python main.py --target <IP> ... --stealth
+```
+
+### Additional Flags
+```bash
+--bloodhound         # Generate BloodHound JSON output
+--module <name>      # Run specific module (enum, attack, post, acl, gpo, cs, lateral, defense, exchange, virt, all)
+--hashes <LM:NT>     # Use pass-the-hash authentication
+```
+
+## License
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+**Copyright (c) 2026 RedReason Authors**
+
+You are free to use, modify, and distribute this software under the terms of the MIT License. This tool is provided "as is" without any warranty.
+
+## Disclaimer
+RedReason is designed for authorized security testing and red team operations in controlled environments (e.g., lab environments, authorized penetration tests). Unauthorized access to computer systems is illegal. Always obtain proper authorization before conducting security assessments.
