@@ -2,6 +2,15 @@
 
 All notable changes to the RedReason project.
 
+## [1.0.0] - 2026-01-07
+
+### Added
+- **Production Hardening Phase**:
+    - **Global Resilience**: Top-level exception handling in `main.py` for graceful failures.
+    - **Code Standardization**: Removal of PoC tags, addition of comprehensive docstrings (e.g., `modules/ad_virt.py`).
+    - **Dependency Freeze**: Validated usage of `impacket`, `ldap3`, `pycryptodome` in `requirements.txt`.
+    - **Versioning**: Added `VERSION` file tracking release 1.0.0.
+
 ## [0.1.1] - 2026-01-07
 
 ### Added

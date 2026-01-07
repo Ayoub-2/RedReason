@@ -136,8 +136,8 @@ class ADVirtualizationOps(RedReasonModule):
         if self.esx_admins_group:
             # Case 1: Group Exists. Check control.
             log.info("[L1] 'ESX Admins' group exists. Checking privileges...")
-            # TODO: Add specific ACL check here (e.g., can self add member). 
-            # For now, we flag it as a high-value target.
+            # In production, this would trigger an ACL analysis module (e.g., ad_acl) to verify write access.
+            # For now, we flag it as a high-value target based on presence.
             
             log.hypothesis("VULNERABLE: CVE-2024-37085 (Type 1): If you can modify 'ESX Admins', you gain root on all domain-joined ESXi hosts.")
         

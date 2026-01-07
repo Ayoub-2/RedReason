@@ -221,6 +221,11 @@ def main():
 
     except KeyboardInterrupt:
         log.fail("Operation interrupted by user")
+    except Exception as e:
+        log.fail(f"Unhandled Exception: {str(e)}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()
 
     # Generate Report
     reporter = ReportGenerator(log)

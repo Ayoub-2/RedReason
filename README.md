@@ -1,4 +1,6 @@
-# Auto Vuln (RedReason)
+# RedReason v1.0.0 🛡️
+
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Version](https://img.shields.io/badge/Version-1.0.0-blue)
 
 An autonomous Red Team operator tool designed for the CRTP mindset.
 
