@@ -45,6 +45,9 @@ All notable changes to the RedReason project.
   - Updated Dockerfile to use specific Python version (`3.9.18-slim`) instead of floating `3.9-slim`.
   - Added non-root user (`redreason`) to Docker container for enhanced security (runs as UID 1000).
   - Set proper file ownership and permissions in Dockerfile using `--chown` flag for safer containerized execution.
+- **NOTICE file**: Comprehensive third-party license attribution documenting all dependencies (impacket, ldap3, colorlog, termcolor, pycryptodome) and license compatibility analysis.
+
+
 
 ## [1.0.0] - 2026-01-07
 
