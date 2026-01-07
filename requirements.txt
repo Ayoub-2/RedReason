@@ -1,5 +1,5 @@
-impacket
-ldap3
-colorlog
-termcolor
-pycryptodome
+impacket==0.11.0
+ldap3==2.9.1
+colorlog==6.8.2
+termcolor==2.4.0
+pycryptodome==3.19.0

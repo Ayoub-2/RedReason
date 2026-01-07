@@ -40,6 +40,11 @@ All notable changes to the RedReason project.
 
 ### Changed
 - **Removed `--debug` flag**: Consolidated into `-v`, `-vv`, `-vvv` verbosity levels. Use `-vv` for DEBUG level (equivalent to old `--debug`), `-vvv` for TRACE level with exception tracebacks.
+- **Production Hardening**: 
+  - Pinned all Python dependency versions in `requirements.txt` for reproducible builds (impacket==0.11.0, ldap3==2.9.1, colorlog==6.8.2, termcolor==2.4.0, pycryptodome==3.19.0).
+  - Updated Dockerfile to use specific Python version (`3.9.18-slim`) instead of floating `3.9-slim`.
+  - Added non-root user (`redreason`) to Docker container for enhanced security (runs as UID 1000).
+  - Set proper file ownership and permissions in Dockerfile using `--chown` flag for safer containerized execution.
 
 ## [1.0.0] - 2026-01-07
 

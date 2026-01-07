@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.9.18-slim
 
 WORKDIR /app
 
@@ -8,14 +8,20 @@ RUN apt-get update && apt-get install -y \
     libkrb5-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for security
+RUN useradd -m -u 1000 redreason
+
 # Copy requirements and install
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
-COPY . .
+# Copy source code with proper ownership
+COPY --chown=redreason:redreason . .
 
-# Create reports directory
-RUN mkdir -p reports
+# Create reports directory with proper permissions
+RUN mkdir -p reports && chown -R redreason:redreason /app
+
+# Switch to non-root user
+USER redreason
 
 ENTRYPOINT ["python", "main.py"]

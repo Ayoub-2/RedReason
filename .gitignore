@@ -5,6 +5,3 @@ hashes_*.txt
 gpp_passwords.txt
 .DS_Store
 reports/*
-docs/task.md
-docs/implementation_plan.md
-extract_pdf.py
