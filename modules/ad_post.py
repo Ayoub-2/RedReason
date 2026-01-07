@@ -21,12 +21,18 @@ class ADPostExploitation(RedReasonModule):
         
     def run(self, args=None):
         self.log_start()
-        # Orchestration of post-ex
-        # 1. Golden Ticket (if requested or krbtgt hash provided)
-        # 2. Shadow Credentials (if requested)
-        # 3. Active Session Enum (User Hunter)
         
-        self.active_session_enum()
+        stealth_enabled = self.is_stealth_mode(args) if args else False
+        
+        if stealth_enabled:
+            log.info("🥷 Stealth Mode: Skipping active post-exploitation checks (RPC enumeration disabled)")
+        else:
+            # Orchestration of post-ex
+            # 1. Golden Ticket (if requested or krbtgt hash provided)
+            # 2. Shadow Credentials (if requested)
+            # 3. Active Session Enum (User Hunter)
+            self.active_session_enum()
+        
         self.log_end()
 
     def active_session_enum(self):

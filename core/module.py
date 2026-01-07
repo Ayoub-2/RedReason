@@ -19,6 +19,10 @@ class RedReasonModule(ABC):
         """
         pass
 
+    def is_stealth_mode(self, args):
+        """Check if stealth mode is enabled."""
+        return hasattr(args, 'stealth') and args.stealth
+
     def log_start(self):
         log.info(f"Starting Module: {self.name} - {self.description}")
 
