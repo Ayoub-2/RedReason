@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--password", help="Password for authentication")
     parser.add_argument("--hashes", help="NTLM hashes (LM:NT)")
     parser.add_argument("--domain", help="Domain Name (if different from target)")
-    parser.add_argument("--module", choices=["enum", "attack", "post", "acl", "gpo", "cs", "lateral", "defense", "exchange", "all"], default="all", help="Operation module to run")
+    parser.add_argument("--module", choices=["enum", "attack", "post", "acl", "gpo", "cs", "lateral", "defense", "exchange", "virt", "all"], default="all", help="Operation module to run")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument('--bloodhound', action='store_true', help='Generate BloodHound compatible output files')
     parser.add_argument('--stealth', action='store_true', help='Enable Stealth Mode (Passive Checks Only)')
@@ -198,6 +198,25 @@ def main():
                 enumeration_data=current_state
             )
             exch_mod.run(args)
+
+
+        if args.module in ["virt", "all"]:
+            log.info("Running Virtualization Operations Module...")
+            # state sharing
+            current_state = enumerator if 'enumerator' in locals() else None
+            
+            # Import here to avoid circular imports if needed, though top-level is fine
+            from modules.ad_virt import ADVirtualizationOps 
+            
+            virt_mod = ADVirtualizationOps(
+                target=args.target,
+                domain=target_domain,
+                user=args.user,
+                password=args.password,
+                hashes=args.hashes,
+                enumeration_data=current_state
+            )
+            virt_mod.run(args)
 
 
     except KeyboardInterrupt:

@@ -90,6 +90,19 @@ RedReason supports granular targeting.
 ```bash
 --module post
 ```
+
+### Exchange Operations
+```bash
+--module exchange
+```
+*Enumerates Exchange infrastructure, validates PrivExchange, and audits RBAC permissions.*
+
+### Virtualization Operations
+```bash
+--module virt
+```
+*Enumerates ESXi/vCenter hosts, fingerprints versions (SOAP), and checks for CVE-2024-37085 ("ESX Admins" abuse).*
+
 *Run this AFTER enumeration to find active sessions (User Hunter) or forge tickets.*
 
 ### Debug Mode

@@ -218,7 +218,11 @@ class ADAttacker(RedReasonModule):
             shares = smb.listShares()
             sysvol_exists = False
             for s in shares:
-                if s['shi1_netname'].decode('utf-8').lower() == 'sysvol':
+                share_name = s['shi1_netname']
+                if isinstance(share_name, bytes):
+                    share_name = share_name.decode('utf-8')
+                
+                if share_name.lower() == 'sysvol':
                     sysvol_exists = True
                     break
             

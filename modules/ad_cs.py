@@ -15,6 +15,7 @@ class ADCSAbuse(RedReasonModule):
         self.enumeration_data = enumeration_data
         self.conn = None
         self.config_nc = None
+        self.ca_map = {}
 
     def run(self, args=None):
         self.log_start()
@@ -52,12 +53,21 @@ class ADCSAbuse(RedReasonModule):
             # Search for pKIEnrollmentService in Configuration Naming Context
             # CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration...
             search_base = f"CN=Enrollment Services,CN=Public Key Services,CN=Services,{self.config_nc}"
-            self.conn.search(search_base, "(objectClass=pKIEnrollmentService)", attributes=['cn', 'dNSHostName'])
+            self.conn.search(search_base, "(objectClass=pKIEnrollmentService)", attributes=['cn', 'dNSHostName', 'certificateTemplates'])
             
+            self.ca_map = {} # Map CA Name -> List of Template Names
+
             if self.conn.entries:
                 log.success(f"[L0] Validated: Found {len(self.conn.entries)} Enterprise CA(s).")
                 for entry in self.conn.entries:
-                    log.evidence(f"CA Found: {entry.cn} on {entry.dNSHostName}")
+                    ca_name = str(entry.cn)
+                    dns_name = str(entry.dNSHostName)
+                    templates = entry.certificateTemplates if hasattr(entry, 'certificateTemplates') and entry.certificateTemplates else []
+                    
+                    self.ca_map[ca_name] = templates
+                    
+                    log.evidence(f"CA Found: {ca_name} on {dns_name}")
+                    log.info(f"    -> Publishes {len(templates)} templates.")
             else:
                 log.info("[L0] No Enterprise CAs found via LDAP.")
                 
@@ -95,8 +105,22 @@ class ADCSAbuse(RedReasonModule):
                             has_client_auth = True
                             
                     if is_enrollee_supplies_subject and has_client_auth:
-                        log.evidence(f"[L1] Potential ESC1 Template Found: {entry.cn} (Enrollee Supplies Subject + Client Auth)")
-                        log.hypothesis(f"Template {entry.cn} might allow arbitrary user impersonation if enrollment rights exist.")
+                        tmpl_name = str(entry.cn)
+                        log.evidence(f"[L1] Potential ESC1 Template Found: {tmpl_name} (Enrollee Supplies Subject + Client Auth)")
+                        
+                        # Check if published
+                        published_on = []
+                        if hasattr(self, 'ca_map'):
+                            for ca, templates in self.ca_map.items():
+                                if tmpl_name in templates:
+                                    published_on.append(ca)
+                        
+                        if published_on:
+                            log.success(f"VULNERABLE: ESC1 Path: Template '{tmpl_name}' is published on CA(s): {', '.join(published_on)}")
+                        else:
+                            log.info(f"    -> Template '{tmpl_name}' is NOT published on any discovered CA (Not exploitable).")
+
+                        log.hypothesis(f"Template {tmpl_name} might allow arbitrary user impersonation if enrollment rights exist.")
                         
                 except Exception as inner_e:
                     continue

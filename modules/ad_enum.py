@@ -24,6 +24,7 @@ class ADEnumerator(RedReasonModule):
         self.collected_computers = []
         self.collected_dcs = []
         self.collected_dns = []
+        self.sm = SessionManager(target)
 
     def connect(self):
         # Check if we have credentials
@@ -250,6 +251,8 @@ class ADEnumerator(RedReasonModule):
                 
         if found:
             log.success(f"Found {found} DNS records.")
+
+    def check_dcsync_rights(self):
         log.info("Checking for Suspect DCSync Rights...")
         try:
             default_nc, _ = self.get_naming_contexts()
@@ -540,7 +543,7 @@ class ADEnumerator(RedReasonModule):
                 self.assess_spray_feasibility()
                 log.info("Enumeration complete")
                 
-                sm.save_state(self.collected_users, self.collected_computers)
+                self.sm.save_state(self.collected_users, self.collected_computers)
                 return True
             else:
                 return False

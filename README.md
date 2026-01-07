@@ -22,6 +22,8 @@ See [Developer Guide](docs/developer_guide.md) for instructions on creating new 
     - **ACLs**: Dangerous ACE detection (GenericAll, WriteDACL).
     - **GPO**: Policy weakness and linkage analysis.
     - **ADCS**: Enterprise CA and ESC1/ESC8 misconfiguration detection.
+    - **Exchange**: Server enumeration, PrivExchange (ACLs), and RBAC auditing.
+    - **Virtualization**: ESXi/vCenter enumeration, "ESX Admins" abuse (CVE-2024-37085), and Version Fingerprinting.
     - **Lateral**: WinRM/RDP exposure mapping and LAPS coverage.
     - **Defense**: Credential Guard and Defensive Posture checks.
 
@@ -63,6 +65,8 @@ docker run --rm -v ${PWD}/reports:/app/reports redreason --target <IP> --domain 
 docker run ... --module acl      # Authorization Abuse
 docker run ... --module gpo      # Group Policy Abuse
 docker run ... --module cs       # ADCS Abuse
+docker run ... --module exchange # Exchange Ops
+docker run ... --module virt     # Virtualization Ops
 docker run ... --module defense  # Defensive Posture
 
 # Pass-the-Hash

@@ -54,7 +54,7 @@ class ADACLAbuse(RedReasonModule):
         try:
             # Try to read the SD of the domain root
             default_nc = self.conn.server.info.other['defaultNamingContext'][0]
-            self.conn.search(default_nc, "(objectClass=domain)", attributes=['nTSecurityDescriptor'], controls=[ldap3.protocol.microsoft.security_descriptor_control(sdflags=0x7)])
+            self.conn.search(default_nc, "(objectClass=domain)", attributes=['nTSecurityDescriptor'])
             
             if self.conn.entries and self.conn.entries[0].nTSecurityDescriptor:
                 log.success("[L0] Validated: Can read nTSecurityDescriptor via LDAP.")

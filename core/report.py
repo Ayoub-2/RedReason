@@ -22,7 +22,10 @@ class ReportGenerator:
             "Zerologon": "https://www.secura.com/blog/zerologon",
             "PetitPotam": "https://github.com/topotam/PetitPotam",
             "ESC1": "https://posts.specterops.io/certified-pre-owned-d95910965cd2",
-            "LAPS": "https://adsecurity.org/?p=1790"
+            "LAPS": "https://adsecurity.org/?p=1790",
+            "CVE-2024-37085": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-37085",
+            "ESX Admins": "https://www.vmware.com/security/advisories/VMSA-2024-0013.html",
+            "PrivExchange": "https://dirkjanm.io/abusing-exchange-one-api-call-away-from-domain-admin/"
         }
 
     def generate_json(self, target_domain):
@@ -54,12 +57,25 @@ class ReportGenerator:
                 category = "critical"
                 # Extract clean title (Split by ':' or take first 5 words)
                 if ":" in msg:
-                    title = msg.split(":")[1].strip() # Take part after "VULNERABLE: <Title>" or "CRITICAL: <Title>"
+                    parts = msg.split(":")
+                    if len(parts) > 1:
+                        title = parts[1].strip()
+                    else:
+                        title = msg
+
                     # If the message starts directly with text, try to find the distinctive part
-                    if "VULNERABLE" in msg:
-                         title = msg.split("VULNERABLE:")[1].split(":")[0].strip() if ":" in msg.split("VULNERABLE:")[1] else msg.split("VULNERABLE:")[1].strip()
-                    elif "CRITICAL" in msg:
-                         title = msg.split("CRITICAL:")[1].strip()
+                    try:
+                        if "VULNERABLE" in msg:
+                             v_parts = msg.split("VULNERABLE:")
+                             if len(v_parts) > 1:
+                                 sub = v_parts[1]
+                                 title = sub.split(":")[0].strip() if ":" in sub else sub.strip()
+                        elif "CRITICAL" in msg:
+                             c_parts = msg.split("CRITICAL:")
+                             if len(c_parts) > 1:
+                                 title = c_parts[1].strip()
+                    except IndexError:
+                        title = msg # Fallback on error
                 else:
                     title = msg # Fallback
             
