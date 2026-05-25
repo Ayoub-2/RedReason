@@ -427,6 +427,30 @@ class ADAttacker(RedReasonModule):
         except Exception as e:
             log.debug(f"Failed to check encryption types: {e}")
 
+    def stage_l0_presence(self):
+        """L0: Verify presence of active target services."""
+        log.info("[L0] Validating connectivity to DC and service targets...")
+
+    def stage_l1_misconfig(self):
+        """L1: Assess passive hardening and signing controls."""
+        log.info("[L1] Auditing Kerberos hardening and SMB default signing posture...")
+        self.check_kerberos_hardening()
+        self.check_smb_signing()
+
+    def stage_l2_validation(self):
+        """L2: Non-destructive verification of delegation and roasted accounts."""
+        log.info("[L2] Scanning for exploitable paths (Roasting, Delegation, GPP, Coercion)...")
+        self.check_asrep_roasting()
+        self.check_kerberoasting()
+        self.check_delegation_abuse()
+        self.check_rbcd()
+        self.check_gpp_passwords()
+        self.check_coercion_vulnerabilities()
+
+    def stage_l3_execution(self):
+        """L3: Active exploitation execution checks (None in validation phase)."""
+        pass
+
     def run(self, args=None):
         self.log_start()
         self.run_all()
@@ -434,14 +458,7 @@ class ADAttacker(RedReasonModule):
 
     def run_all(self):
         if self.connect():
-            self.check_asrep_roasting()
-            self.check_kerberoasting()
-            self.check_kerberos_hardening()
-            self.check_delegation_abuse()
-            self.check_rbcd()
-            self.check_smb_signing()
-            self.check_gpp_passwords()
-            self.check_coercion_vulnerabilities()
+            self.execute_maturity_flow()
 
 def run(args):
     attacker = ADAttacker(args.target, args.domain, args.user, args.password, args.hashes)

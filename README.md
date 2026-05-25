@@ -1,6 +1,6 @@
-# RedReason v1.0.0 🛡️
+# RedReason v1.1.0 🛡️
 
-![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen) ![Version](https://img.shields.io/badge/Version-1.1.0-blue)
 
 An autonomous Red Team operator tool designed for the CRTP mindset.
 
@@ -10,12 +10,17 @@ An autonomous Red Team operator tool designed for the CRTP mindset.
 - **Lab Ready**: Built for Active Directory labs (like alteredsecurity.com).
 
 ## Architecture & Extensibility
-RedReason is built on a modular architecture designed for "Senior Red Team" operations:
-*   **Strict Data Model**: Uses typed objects (`ADUser`, `ADComputer`) for consistency.
-*   **State Sharing**: Modules share intelligence to reduce network noise (e.g., Attack module uses Enumeration cache).
-*   **Plugin System**: Easily extensible via the `RedReasonModule` interface.
+RedReason is built on a robust, standardized modular architecture designed for enterprise-grade security engagements:
+*   **MaturityFlowEngine Lifecycle**: Enforces structured execution boundaries (`stage_l0_presence` through `stage_l3_execution`) to ensure safe validation ceilings (e.g. passive mode ceilings).
+*   **Relational SQLite Graph Cache**: Saves domain state in an ACID-compliant SQLite transactional database, representing graph relationships between users, computers, group memberships, trusts, and GPOs. This facilitates internal graph traversal and complex relationship query paths.
+*   **Plugin System**: Easily extensible by subclassing the unified `RedReasonModule` base contract.
 
 See [Developer Guide](docs/developer_guide.md) for instructions on creating new modules.
+
+## Security & Architecture Analysis
+For a deep dive into the security posture, threat model, pentester-level review, and core upgrades of RedReason, see [Executive Security & Architecture Analysis Report](project-docs/analysis/project_analysis_and_propositions.md).
+
+
 
 ## Features
 - **Enumeration** (L0-L2 Maturity):

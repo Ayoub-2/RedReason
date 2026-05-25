@@ -2,6 +2,21 @@
 
 All notable changes to the RedReason project.
 
+## [1.1.0] - 2026-05-25
+
+### Added
+- **Unified MaturityFlowEngine framework (`core/module.py`)**:
+    - Enforced modular maturity standards (`stage_l0_presence` through `stage_l3_execution`) across the engine framework and all operational modules.
+    - Refactored `modules/ad_enum.py`, `modules/ad_attacks.py`, and `modules/ad_post.py` to subclass the abstract lifecycle nicely.
+- **Relational Transactional Graph Cache (`core/session.py`)**:
+    - Migrated legacy flat JSON session cache to a robust SQLite transactional backend database.
+    - Added database relation schemas mapping users, computers, group memberships, trusts, and GPOs.
+    - Introduced SQL query interfaces and native graph relation traversals (`find_high_risk_relation_paths`).
+- **Stealth Boundary Orchestration (`main.py`)**:
+    - Linked the CLI `--stealth` flag to set `max_level` execution boundaries dynamically across all modular processes.
+    - *Security Impact*: Enabled absolute boundary control to guarantee passive audits stay quiet, enforced fully parameterized queries protecting the database from input injection, and added ACID-compliant transaction-safe rollback logic to prevent data corruption.
+
+
 ## [1.0.0] - 2026-01-07
 
 ### Added

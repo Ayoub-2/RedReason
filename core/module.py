@@ -10,6 +10,7 @@ class RedReasonModule(ABC):
     def __init__(self):
         self.name = "BaseModule"
         self.description = "Abstract Base Module"
+        self.max_level = 3  # Dynamic execution ceiling boundary
 
     @abstractmethod
     def run(self, args):
@@ -26,7 +27,7 @@ class RedReasonModule(ABC):
         log.info(f"Completed Module: {self.name}")
 
     # ==========================================
-    # Module Maturity Model (L0 - L4)
+    # Module Maturity Model (L0 - L3)
     # ==========================================
     
     def stage_l0_presence(self):
@@ -47,9 +48,15 @@ class RedReasonModule(ABC):
 
     def execute_maturity_flow(self):
         """
-        Executes the module stages in order.
+        Executes the module stages in order, respecting the max_level boundary.
         """
-        self.stage_l0_presence()
-        self.stage_l1_misconfig()
-        self.stage_l2_validation()
-        # L3 is usually triggered manually or via specific flags in subclasses
+        log.info(f"[{self.name}] Initiating Maturity Flow (Ceiling: L{self.max_level})")
+        if self.max_level >= 0:
+            self.stage_l0_presence()
+        if self.max_level >= 1:
+            self.stage_l1_misconfig()
+        if self.max_level >= 2:
+            self.stage_l2_validation()
+        if self.max_level >= 3:
+            self.stage_l3_execution()
+

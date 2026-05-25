@@ -31,8 +31,10 @@ def main():
     target_domain = args.domain if args.domain else args.target
 
     try:
-        # Orchestration Logic
-        # Orchestration Logic
+        # Enforce execution ceiling based on the --stealth flag (Proposition 4)
+        max_level = 1 if args.stealth else 3
+        log.info(f"Stealth Mode: {'Enabled (Ceiling L1)' if args.stealth else 'Disabled (Ceiling L3)'}")
+        
         # Try to load session first to populate context if we skipped enum
         from core.session import SessionManager
         sm = SessionManager(args.target)
@@ -47,10 +49,7 @@ def main():
                 password=args.password,
                 hashes=args.hashes
             )
-            # We need to capture data for BloodHound if requested.
-            # This requires ad_enum.run() to return data or we act on the enumerator object.
-            # ad_enum.run() just prints currently.
-            # We'll need to modify ADEnumerator to store collected users/computers in self.users, etc.
+            enumerator.max_level = max_level
             if not enumerator.run_all():
                 log.fail("Critical Failure: Initial LDAP connection failed. Aborting operations.")
                 sys.exit(1)
@@ -67,7 +66,6 @@ def main():
         
         if args.module in ["attack", "all"]:
             log.info("Running Attack Module...")
-            # state sharing
             # If we didn't run enumeration just now, but we loaded a session, create a dummy enumerator to hold state
             if 'enumerator' not in locals():
                  # Create a shell enumerator just to hold the data
@@ -85,12 +83,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            attacker.max_level = max_level
             attacker.run(args)
 
 
         if args.module in ["post", "all"]:
             log.info("Running Post-Exploitation Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             post_ex = ad_post.ADPostExploitation(
@@ -101,12 +99,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            post_ex.max_level = max_level
             post_ex.run(args)
 
 
         if args.module in ["acl", "all"]:
             log.info("Running ACL & Authorization Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             acl_mod = ad_acl.ADACLAbuse(
@@ -117,12 +115,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            acl_mod.max_level = max_level
             acl_mod.run(args)
 
 
         if args.module in ["gpo", "all"]:
             log.info("Running GPO Abuse Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             gpo_mod = ad_gpo.ADGPOAbuse(
@@ -133,12 +131,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            gpo_mod.max_level = max_level
             gpo_mod.run(args)
 
 
         if args.module in ["cs", "all"]:
             log.info("Running ADCS Abuse Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             cs_mod = ad_cs.ADCSAbuse(
@@ -149,12 +147,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            cs_mod.max_level = max_level
             cs_mod.run(args)
 
 
         if args.module in ["lateral", "all"]:
             log.info("Running Lateral Movement Exposure Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             lat_mod = ad_lateral.ADLateralMovement(
@@ -165,12 +163,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            lat_mod.max_level = max_level
             lat_mod.run(args)
 
 
         if args.module in ["defense", "all"]:
             log.info("Running Defensive Posture Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             def_mod = ad_defense.ADDefenseAwareness(
@@ -181,12 +179,12 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            def_mod.max_level = max_level
             def_mod.run(args)
 
 
         if args.module in ["exchange", "all"]:
             log.info("Running Exchange Operations Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
             exch_mod = ad_exchange.ADExchangeOps(
@@ -197,15 +195,14 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            exch_mod.max_level = max_level
             exch_mod.run(args)
 
 
         if args.module in ["virt", "all"]:
             log.info("Running Virtualization Operations Module...")
-            # state sharing
             current_state = enumerator if 'enumerator' in locals() else None
             
-            # Import here to avoid circular imports if needed, though top-level is fine
             from modules.ad_virt import ADVirtualizationOps 
             
             virt_mod = ADVirtualizationOps(
@@ -216,6 +213,7 @@ def main():
                 hashes=args.hashes,
                 enumeration_data=current_state
             )
+            virt_mod.max_level = max_level
             virt_mod.run(args)
 
 

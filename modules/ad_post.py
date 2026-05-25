@@ -19,14 +19,25 @@ class ADPostExploitation(RedReasonModule):
         self.hashes = hashes
         self.enumeration_data = enumeration_data
         
+    def stage_l0_presence(self):
+        """L0: Verify session hunting endpoints."""
+        log.info("[L0] Checking target availability for lateral hunting...")
+
+    def stage_l1_misconfig(self):
+        """L1: Inspect session exposure risks."""
+        pass
+
+    def stage_l2_validation(self):
+        """L2: Active session enumeration (User Hunter)."""
+        self.active_session_enum()
+
+    def stage_l3_execution(self):
+        """L3: Ticket forging capabilities (Golden Ticket simulation)."""
+        pass
+
     def run(self, args=None):
         self.log_start()
-        # Orchestration of post-ex
-        # 1. Golden Ticket (if requested or krbtgt hash provided)
-        # 2. Shadow Credentials (if requested)
-        # 3. Active Session Enum (User Hunter)
-        
-        self.active_session_enum()
+        self.execute_maturity_flow()
         self.log_end()
 
     def active_session_enum(self):

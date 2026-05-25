@@ -5,7 +5,7 @@ from impacket.krb5.types import Principal
 from impacket.ldap import ldaptypes
 import datetime
 from core.logger import log
-from core.types import ADUser, ADComputer
+from core.types import ADUser, ADComputer, ADGPO
 from core.module import RedReasonModule
 from core.session import SessionManager
 
@@ -24,6 +24,9 @@ class ADEnumerator(RedReasonModule):
         self.collected_computers = []
         self.collected_dcs = []
         self.collected_dns = []
+        self.collected_groups = {}
+        self.collected_trusts = []
+        self.collected_gpos = []
         self.sm = SessionManager(target)
 
     def connect(self):
@@ -100,6 +103,7 @@ class ADEnumerator(RedReasonModule):
                 elif direction == 3: dir_str = "Bidirectional"
                 
                 log.evidence(f"Trust Found: {entry.name} ({entry.flatName}) - {dir_str}")
+                self.collected_trusts.append({'name': str(entry.name), 'direction': dir_str})
         except Exception as e:
             log.debug(f"Failed to enumerate Trusts: {e}")
 
@@ -115,8 +119,10 @@ class ADEnumerator(RedReasonModule):
                     members = entry.member
                     if members:
                         log.evidence(f"Group '{group}' Members:")
+                        self.collected_groups[group] = []
                         for m in members:
                             log.evidence(f"  - {m}")
+                            self.collected_groups[group].append(str(m))
                     else:
                         log.info(f"Group '{group}' has no members or could not be queried.")
         except Exception as e:
@@ -166,6 +172,8 @@ class ADEnumerator(RedReasonModule):
         self.conn.search(default_nc, "(objectClass=groupPolicyContainer)", attributes=['displayName', 'gPCFileSysPath'])
         for entry in self.conn.entries:
             log.info(f"GPO: {entry.displayName} ({entry.gPCFileSysPath})")
+            gpo_obj = ADGPO(name=str(entry.displayName), display_name=str(entry.displayName), gpc_file_sys_path=str(entry.gPCFileSysPath))
+            self.collected_gpos.append(gpo_obj)
 
     def get_users_detailed(self):
         log.info("Enumerating Users (Detailed)...")
@@ -511,6 +519,41 @@ class ADEnumerator(RedReasonModule):
 
 
 
+    def stage_l0_presence(self):
+        """L0: Active & Passive presence queries."""
+        log.info("[L0] Enumerating Passive Active Directory Infrastructure...")
+        self.get_computers_basic()
+        self.get_domain_controllers()
+        self.get_domain_trusts()
+        self.get_gpos()
+        self.check_adcs()
+        self.check_laps()
+        self.check_adminsdholder()
+        self.get_dns_records()
+
+    def stage_l1_misconfig(self):
+        """L1: Auditing security and permissions configurations."""
+        log.info("[L1] Checking for Logical Active Directory Misconfigurations...")
+        self.check_machine_account_quota()
+        self.check_password_policy()
+        self.get_group_members()
+        self.get_users_detailed()
+        self.check_dcsync_rights()
+        self.check_service_account_risks()
+        self.check_kerberos_encryption_types()
+        self.assess_remote_exposure()
+        self.assess_spray_feasibility()
+        self.check_adcs_templates()
+        self.check_adcs_web_enrollment()
+
+    def stage_l2_validation(self):
+        """L2: Verification checks."""
+        pass
+
+    def stage_l3_execution(self):
+        """L3: Exploits (None in enumeration)."""
+        pass
+
     def run(self, args=None):
         """
         Standard entry point for RedReasonModule compliance.
@@ -523,33 +566,23 @@ class ADEnumerator(RedReasonModule):
         # If credentials exist, try LDAP
         if self.password or self.hashes:
             if self.connect():
-                self.get_computers_basic() # Populate list
-                self.check_machine_account_quota()
-                self.check_password_policy()
-                self.get_domain_trusts()
-                self.get_group_members()
-                self.get_users_detailed()
-                self.get_domain_controllers()
-                self.check_laps()
-                self.check_adcs()
-                self.check_adcs_templates()
-                self.check_adcs_web_enrollment()
-                self.get_gpos()
-                self.check_dcsync_rights()
-                self.check_service_account_risks()
-                self.check_kerberos_encryption_types()
-                self.check_adminsdholder()
-                self.assess_remote_exposure()
-                self.assess_spray_feasibility()
-                log.info("Enumeration complete")
-                
-                self.sm.save_state(self.collected_users, self.collected_computers)
+                self.execute_maturity_flow()
+                log.info("Enumeration complete. Committing state to transactional cache...")
+                self.sm.save_state(
+                    self.collected_users,
+                    self.collected_computers,
+                    self.collected_groups,
+                    self.collected_trusts,
+                    self.collected_gpos
+                )
                 return True
             else:
                 return False
         else:
-            # Fallback to blind enumeration
+            # Fallback to blind verification
             self.verify_user_kerberos()
+            if self.collected_users:
+                self.sm.save_state(self.collected_users, [])
             return True
 
 def run(args):
