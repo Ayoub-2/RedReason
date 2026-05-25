@@ -152,7 +152,13 @@ class ADAttacker(RedReasonModule):
                         self.save_hash("hashes_kerb.txt", hash_line)
                         log.success(f"ROASTED TGS for {spn}! Saved to reports/hashes_kerb.txt")
                     except Exception as e:
-                        log.fail(f"Failed to Kerberoast {username}: {e}")
+                        error_msg = str(e).upper()
+                        # Handle realm mismatch errors (e.g., accounts in trusts or other domains)
+                        if "KDC_ERR_WRONG_REALM" in error_msg or "WRONG_REALM" in error_msg:
+                            log.debug(f"Kerberoasting {username}: Account likely in different realm/trust (skipped). SPN: {spn}")
+                            log.hypothesis(f"Account {username} may be in a different domain/forest trust. Consider cross-realm roasting.")
+                        else:
+                            log.fail(f"Failed to Kerberoast {username}: {e}")
         except Exception as e:
             log.debug(f"Failed to check Kerberoasting: {e}")
 
@@ -453,10 +459,10 @@ class ADAttacker(RedReasonModule):
 
     def run(self, args=None):
         self.log_start()
-        self.run_all()
+        self.run_all(args)
         self.log_end()
 
-    def run_all(self):
+    def run_all(self, args=None):
         if self.connect():
             self.execute_maturity_flow()
 

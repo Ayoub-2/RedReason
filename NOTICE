@@ -1,0 +1,78 @@
+NOTICE
+======
+
+This product includes software developed by the RedReason project and third-party components.
+
+THIRD-PARTY LIBRARIES
+====================
+
+The following third-party libraries are used by RedReason:
+
+1. impacket (0.11.0)
+   - License: MIT License
+   - URL: https://github.com/fortra/impacket
+   - Description: Collection of Python classes for working with network protocols
+   - Copyright: Fortra, LLC and SecureAuth
+
+2. ldap3 (2.9.1)
+   - License: MIT License
+   - URL: https://github.com/cannatag/ldap3
+   - Description: Pure Python LDAP3 client library
+   - Copyright: Giovanni Damiola
+
+3. colorlog (6.8.2)
+   - License: MIT License
+   - URL: https://github.com/bkabrda/colorlog
+   - Description: A logging formatter that uses terminal colors for log levels
+   - Copyright: Sam Roeca
+
+4. termcolor (2.4.0)
+   - License: MIT License
+   - URL: https://github.com/termcolor/termcolor
+   - Description: ANSI color formatting for output in terminal
+   - Copyright: Konstantin Lepa
+
+5. pycryptodome (3.19.0)
+   - License: BSD License (2-Clause BSD)
+   - URL: https://www.dlitz.net/software/pycryptodome/
+   - Description: Self-contained cryptographic library for Python
+   - Copyright: Heidi Williams
+
+DEPENDENCY LICENSE COMPATIBILITY
+================================
+
+All dependencies are compatible with RedReason's MIT License:
+
+- MIT-licensed dependencies (impacket, ldap3, colorlog, termcolor): Fully compatible
+- BSD-licensed dependency (pycryptodome): Compatible (BSD is more permissive than MIT)
+
+For full license texts, see:
+- RedReason: LICENSE (MIT License)
+- Individual packages: License files in their respective repositories
+
+PYTHON RUNTIME
+==============
+
+RedReason is built with Python 3.9.18, which is licensed under the Python Software Foundation License (PSFL).
+- URL: https://docs.python.org/3/license.html
+- License: PSF License (compatible with MIT)
+
+SYSTEM DEPENDENCIES (Docker)
+============================
+
+When using the Docker container, the following system components are included:
+
+- Debian 12 (slim base image): Multiple licenses (GPL, Apache, BSD, etc.)
+- gcc (GNU Compiler Collection): GPL v3+
+- libkrb5-dev (MIT Kerberos): MIT License
+
+These are included in the Debian slim base image for system-level dependencies only.
+
+DISCLAIMER
+==========
+
+This software is provided "AS IS" without warranty of any kind. RedReason is designed for authorized
+security testing and red team operations in controlled environments. Users are responsible for ensuring
+compliance with all applicable laws and regulations when using this software.
+
+See the LICENSE file for the complete MIT License text.

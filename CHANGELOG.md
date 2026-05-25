@@ -16,7 +16,6 @@ All notable changes to the RedReason project.
     - Linked the CLI `--stealth` flag to set `max_level` execution boundaries dynamically across all modular processes.
     - *Security Impact*: Enabled absolute boundary control to guarantee passive audits stay quiet, enforced fully parameterized queries protecting the database from input injection, and added ACID-compliant transaction-safe rollback logic to prevent data corruption.
 
-
 ## [1.0.0] - 2026-01-07
 
 ### Added

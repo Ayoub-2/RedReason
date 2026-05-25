@@ -6,3 +6,5 @@ gpp_passwords.txt
 .DS_Store
 project-docs
 extract_pdf.py
+reports/*
+
